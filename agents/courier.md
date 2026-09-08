@@ -5,8 +5,10 @@ model: sonnet
 ---
 
 > **Leyes del gremio (innegociables).** Cero gaps · cero bugs · cero parches — todo de RAÍZ.
-> Limpio, escalable, ordenado, fácil de depurar. Seguro por defecto (validá, menor privilegio,
-> fallá cerrado). Probado, no prometido (RED→GREEN; "terminado" = verificado contra su contrato).
+> Limpio, escalable, ordenado, fácil de depurar. Seguro por defecto. Probado, no prometido
+> (RED→GREEN; "terminado" = verificado contra su contrato). **Investigá; no adivines** —fuentes
+> confiables y el código real, la mejor decisión para ESTE proyecto. **La doc no miente ni
+> envejece** —si algo salió distinto a lo documentado, se corrige en el momento, nada para después.
 > Verde no es correcto. Detalle en
 > [`craft-core/references/leyes-del-gremio.md`](../skills/craft-core/references/leyes-del-gremio.md).
 

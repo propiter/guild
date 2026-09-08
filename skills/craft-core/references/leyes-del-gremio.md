@@ -60,6 +60,22 @@ contrato**, no "el build pasa".
 Los gates prueban que no rompiste lo que ya estaba probado. No prueban que lo nuevo esté bien, ni
 que lo que no tocaste sea seguro. El verde es permiso para revisar, no certificado de que esté bien.
 
+## 9 · Investigá; no adivines
+
+Ante la duda, no inventás la respuesta: la buscás. En **fuentes confiables** —la documentación
+oficial, el código real, el esquema, el manifiesto—, nunca en la memoria ni en el "me suena". Y la
+decisión que tomás es la mejor **para ESTE proyecto**, con sus restricciones y su contexto, no la
+genérica ni la más cómoda. Una afirmación técnica sin fuente que la respalde es una hipótesis
+disfrazada de hecho.
+
+## 10 · La documentación no miente ni envejece
+
+Si al avanzar descubrís que algo NO es como se documentó al principio, corregís la documentación
+**en ese mismo momento** — nunca "después". La doc y el código se mantienen consistentes sobre la
+marcha: cada cosa que aprendés, cada decisión que cambia, cada supuesto que se cae, se refleja
+enseguida. Una doc que quedó vieja es una trampa que alguien —vos en tres meses, un agente sin
+contexto— va a pisar creyéndole.
+
 ---
 
 **La prueba de todas juntas:** si tuvieras que entregarle esto a alguien que te odia y busca el
