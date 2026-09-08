@@ -51,7 +51,23 @@ done
 
 say() { printf '\033[1m[guild]\033[0m %s\n' "$1"; }
 
-if [ "$MODE" = "help" ]; then sed -n '2,26p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0; fi
+if [ "$MODE" = "help" ]; then cat <<'HELP'
+guild installer — el gremio entero, en un comando.
+
+  curl -fsSL https://raw.githubusercontent.com/propiter/guild/main/install.sh | bash
+
+Instala TODO por defecto. Opcional:
+  --only=landing,system     solo esos pipelines (de: landing app system security)
+  --no-impeccable           sin Impeccable (motor estético de landing/app)
+  --no-firecrawl            sin el aviso de Firecrawl
+  --no-gentle-ai            sin Gentle AI (por defecto SÍ se instala)
+  --gentle-ai-channel=beta  canal de Gentle AI (default: stable)
+  --uninstall               quitar lo que este instalador puso
+  --dry-run                 mostrar qué haría, sin tocar nada
+
+Para pasar opciones por pipe:  curl -fsSL ...install.sh | bash -s -- --only=system
+HELP
+exit 0; fi
 
 # ── qué pipeline posee cada skill/agente/comando ──────────────────────────────
 # craft-core y los skills auxiliares van SIEMPRE (son la columna compartida).
@@ -78,9 +94,12 @@ wanted() { # $1 = pipeline de la pieza. core siempre entra.
   case ",$ONLY," in *",$1,"*) return 0;; *) return 1;; esac; }
 
 # ── de dónde sale la fuente ───────────────────────────────────────────────────
-SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Corriendo por `curl | bash` no hay archivo: BASH_SOURCE queda vacío -> modo remoto.
+SELF_SRC="${BASH_SOURCE[0]:-}"
+SELF_DIR=""
+[ -n "$SELF_SRC" ] && SELF_DIR="$(cd "$(dirname "$SELF_SRC")" 2>/dev/null && pwd || true)"
 TMP=""
-if [ -d "$SELF_DIR/skills" ] && [ -d "$SELF_DIR/agents" ]; then
+if [ -n "$SELF_DIR" ] && [ -d "$SELF_DIR/skills" ] && [ -d "$SELF_DIR/agents" ]; then
   SRC="$SELF_DIR"; [ "$MODE" = install ] && say "Fuente local: $SRC"
 else
   TMP="$(mktemp -d)"; trap 'rm -rf "${TMP:?}"' EXIT
