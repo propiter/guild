@@ -44,13 +44,13 @@ y Cursor si los tenés—. Idempotente, sin sudo, nada en segundo plano.
 | `--only=landing,system` | Solo esos pipelines (de `landing app system security`) |
 | `--no-impeccable` | No traer Impeccable (motor estético de landing/app) |
 | `--no-firecrawl` | No configurar Firecrawl (research de landing) |
-| `--with-gentle-ai` | Además, correr el instalador oficial de [Gentle AI](https://github.com/Gentleman-Programming/gentle-ai) |
+| `--no-gentle-ai` | NO correr el instalador de [Gentle AI](https://github.com/Gentleman-Programming/gentle-ai) (por defecto **sí** se corre) |
 | `--help` | Ver todo |
 
 **Dependencias externas** — el gremio no las esconde:
 
 - **Impeccable** ([`pbakaus/impeccable`](https://github.com/pbakaus/impeccable), MIT) — se copia. Motor estético de landing/app.
-- **Gentle AI** ([`Gentleman-Programming/gentle-ai`](https://github.com/Gentleman-Programming/gentle-ai)) — memoria persistente + SDD + skills. NO se copia ni se corre en silencio: por defecto el instalador imprime su comando oficial; con `--with-gentle-ai` lo corre. Es código de un tercero que reconfigura tu entorno — correrlo es tu decisión.
+- **Gentle AI** ([`Gentleman-Programming/gentle-ai`](https://github.com/Gentleman-Programming/gentle-ai)) — memoria persistente + SDD + skills. NO se copia: el instalador corre su comando oficial **por defecto**. Es código de un tercero que reconfigura tu entorno; pasá `--no-gentle-ai` para saltarlo.
 
 Cuando el repo esté en GitHub, también:
 

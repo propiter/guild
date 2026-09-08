@@ -9,7 +9,7 @@
 #   --only=landing,system     instala solo esos pipelines (de: landing app system security)
 #   --no-impeccable           no traer Impeccable (motor estético de landing/app)
 #   --no-firecrawl            no configurar Firecrawl (research de landing)
-#   --with-gentle-ai          además, correr el instalador oficial de Gentle AI
+#   --no-gentle-ai            NO correr el instalador de Gentle AI (por defecto SÍ se corre)
 #   --gentle-ai-channel=beta  canal de Gentle AI (default: stable)
 #   --uninstall               quitar lo que este instalador puso (solo lo del gremio)
 #   --dry-run                 mostrar qué haría, sin tocar nada
@@ -17,8 +17,8 @@
 #
 # Idempotente. Sin sudo, sin npm global, nada corre en segundo plano.
 # Impeccable (pbakaus/impeccable, MIT) se copia. Gentle AI (Gentleman-Programming/gentle-ai) NO se
-# copia ni se ejecuta en silencio: por defecto se imprime su comando oficial; con --with-gentle-ai
-# se corre. Es código de un tercero que reconfigura tu entorno — la decisión de correrlo es tuya.
+# copia: se corre su instalador oficial (por defecto). Es código de un tercero que reconfigura tu
+# entorno — pasá --no-gentle-ai para saltarlo.
 set -euo pipefail
 
 REPO="${GUILD_REPO:-https://github.com/propiter/guild}"
@@ -29,7 +29,7 @@ CURSOR_DIR="${CURSOR_CONFIG_DIR:-$HOME/.cursor}"
 
 WITH_IMPECCABLE="${GUILD_IMPECCABLE:-1}"
 WITH_FIRECRAWL="${GUILD_FIRECRAWL:-1}"
-WITH_GENTLE_AI="${GUILD_GENTLE_AI:-0}"        # opt-in: corre un instalador de terceros
+WITH_GENTLE_AI="${GUILD_GENTLE_AI:-1}"        # default on: corre el instalador oficial de Gentle AI
 GENTLE_AI_CHANNEL="${GUILD_GENTLE_AI_CHANNEL:-stable}"
 ONLY=""                                        # vacío = todos los pipelines
 MODE="install"
@@ -39,7 +39,8 @@ for arg in "$@"; do
     --only=*)              ONLY="${arg#*=}" ;;
     --no-impeccable)       WITH_IMPECCABLE=0 ;;
     --no-firecrawl)        WITH_FIRECRAWL=0 ;;
-    --with-gentle-ai)      WITH_GENTLE_AI=1 ;;
+    --no-gentle-ai)        WITH_GENTLE_AI=0 ;;
+    --with-gentle-ai)      WITH_GENTLE_AI=1 ;;   # (default; mantiene compatibilidad)
     --gentle-ai-channel=*) GENTLE_AI_CHANNEL="${arg#*=}" ;;
     --uninstall)           MODE="uninstall" ;;
     --dry-run)             MODE="dry-run" ;;
@@ -172,7 +173,7 @@ else
   say "Gentle AI (memoria + SDD + skills, de Gentleman-Programming) NO se instaló."
   say "  Es un instalador de terceros que configura tu entorno. Si lo querés, corré su comando oficial:"
   say "    $GENTLE_CMD"
-  say "  O reinstalá guild con --with-gentle-ai para que lo corra por vos."
+  say "  O reinstalá sin --no-gentle-ai para que lo corra por vos."
 fi
 say ""
 say "Recargá tu herramienta (Claude: /reload-plugins) y probá /proyecto o /seguridad."
