@@ -11,8 +11,10 @@ metadata:
 
 Un sistema que nunca lo atacaron de verdad no sabe si es seguro — sabe que nadie lo intentó
 todavía. Este pipeline ataca la propia obra del gremio para endurecerla: modela amenazas de
-verdad, explota de verdad contra un entorno propio, remedia la causa y convierte cada hallazgo en
-un candado que hace imposible que el mismo fallo vuelva a entrar sin que algo se ponga rojo.
+verdad, explota de verdad contra un entorno propio — levantándolo si hace falta, con la misma
+disciplina con la que el gremio levanta el resto de sus entornos —, remedia la causa y convierte
+cada hallazgo en un candado que hace imposible que el mismo fallo vuelva a entrar sin que algo se
+ponga rojo.
 
 No es una auditoría de checklist. Una checklist dice qué deberías tener; este pipeline COMPRUEBA,
 con una prueba de concepto real, si lo que tenés de verdad te protege.
@@ -37,8 +39,8 @@ transmitido bien. Cada agente lo verifica por sí mismo, incluso el que ya lo ve
 
 | # | Fase | Oficio | Qué hace | Produce | Puerta de salida |
 |---|------|--------|----------|---------|------------------|
-| 1 | Reconocimiento | `sentinel` | Modela amenazas, inventaria la superficie de ataque, **confirma la propiedad del objetivo**. Solo lectura, cero explotación. | `docs/security/objetivo.md` | La confirmación tiene evidencia concreta, o el rechazo está explícito en la primera línea |
-| 2 | Explotación | `breaker` | Prueba de concepto real contra los objetivos que Sentinel confirmó y priorizó. Documenta la clase de dato alcanzable, nunca el dato. Revierte lo que toca. | `docs/security/hallazgos.md` | Cada hallazgo confirmado tiene PoC reproducible; cero datos reales; todo cambio de estado revertido |
+| 1 | Reconocimiento | `sentinel` | Modela amenazas, inventaria la superficie de ataque, **confirma la propiedad del objetivo** y documenta cómo levantarlo (su `docker-compose`/comando de arranque) si no está corriendo. Solo lectura, cero explotación — nunca lo levanta. | `docs/security/objetivo.md` | La confirmación tiene evidencia concreta, o el rechazo está explícito en la primera línea |
+| 2 | Explotación | `breaker` | Prueba de concepto real contra los objetivos que Sentinel confirmó y priorizó. Si el objetivo no está corriendo, lo levanta con la receta de Sentinel y espera a que esté sano antes de atacar. Documenta la clase de dato alcanzable, nunca el dato. Gestiona el ciclo de vida de la instancia que levantó: la baja al terminar y revierte lo que toca. | `docs/security/hallazgos.md` | Cada hallazgo confirmado tiene PoC reproducible; cero datos reales; todo cambio de estado revertido, incluida la instancia levantada |
 | 3 | Remediación | `warden` | Corrige de raíz cada hallazgo confirmado, en rama, con evidencia antes(rojo)/después(verde) contra la misma PoC. | rama con el fix + `docs/SEGURIDAD.md` actualizado | Causa raíz documentada, no síntoma; la suite de tests sigue en verde |
 | 4 | Candado | `locksmith` | Convierte cada remediación en test de regresión + guardrail de CI cuando corresponde, apoyado en el oficio `smith`. | tests + guardrails enchufados a verify/CI | Cada candado se rompió a propósito y falló |
 
@@ -110,8 +112,8 @@ no reimplementa esa disciplina.
 
 | Ruta | Qué contiene |
 |---|---|
-| `agents/sentinel.md` | Reconocimiento y confirmación de propiedad |
-| `agents/breaker.md` | Explotación real, sin exfiltración |
+| `agents/sentinel.md` | Reconocimiento, confirmación de propiedad y receta de arranque del objetivo |
+| `agents/breaker.md` | Explotación real, sin exfiltración, con gestión del ciclo de vida de la instancia si tuvo que levantarla |
 | `agents/warden.md` | Remediación de raíz, en rama, con evidencia antes/después |
 | `agents/locksmith.md` | Test de regresión + guardrail, apoyado en el oficio `smith` |
 | `agents/smith.md` | La anatomía de candado que Locksmith aplica (definida por smith) |

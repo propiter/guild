@@ -5,143 +5,174 @@
 #   local:   ./install.sh
 #   remoto:  curl -fsSL https://raw.githubusercontent.com/propiter/guild/main/install.sh | bash
 #
-# Una fuente, varios destinos (sin duplicar contenido). Detecta qué herramientas de IA tenés e
-# instala en cada una. Idempotente. Sin sudo, sin npm global, nada corre en segundo plano.
+# Instala TODO por defecto. Elegí con flags:
+#   --only=landing,system     instala solo esos pipelines (de: landing app system security)
+#   --no-impeccable           no traer Impeccable (motor estético de landing/app)
+#   --no-firecrawl            no configurar Firecrawl (research de landing)
+#   --with-gentle-ai          además, correr el instalador oficial de Gentle AI
+#   --gentle-ai-channel=beta  canal de Gentle AI (default: stable)
+#   --uninstall               quitar lo que este instalador puso (solo lo del gremio)
+#   --dry-run                 mostrar qué haría, sin tocar nada
+#   --help                    esta ayuda
 #
-#   --uninstall   quita todo lo que este instalador puso (solo lo del gremio)
-#   --dry-run     muestra qué haría, sin tocar nada
-#
+# Idempotente. Sin sudo, sin npm global, nada corre en segundo plano.
+# Impeccable (pbakaus/impeccable, MIT) se copia. Gentle AI (Gentleman-Programming/gentle-ai) NO se
+# copia ni se ejecuta en silencio: por defecto se imprime su comando oficial; con --with-gentle-ai
+# se corre. Es código de un tercero que reconfigura tu entorno — la decisión de correrlo es tuya.
 set -euo pipefail
 
 REPO="${GUILD_REPO:-https://github.com/propiter/guild}"
 BRANCH="${GUILD_BRANCH:-main}"
-WITH_IMPECCABLE="${GUILD_IMPECCABLE:-1}"
 CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 OPENCODE_DIR="${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}"
 CURSOR_DIR="${CURSOR_CONFIG_DIR:-$HOME/.cursor}"
 
+WITH_IMPECCABLE="${GUILD_IMPECCABLE:-1}"
+WITH_FIRECRAWL="${GUILD_FIRECRAWL:-1}"
+WITH_GENTLE_AI="${GUILD_GENTLE_AI:-0}"        # opt-in: corre un instalador de terceros
+GENTLE_AI_CHANNEL="${GUILD_GENTLE_AI_CHANNEL:-stable}"
+ONLY=""                                        # vacío = todos los pipelines
 MODE="install"
-case "${1:-}" in
-  --uninstall) MODE="uninstall" ;;
-  --dry-run)   MODE="dry-run" ;;
-  "") ;;
-  *) echo "Opción desconocida: $1" >&2; exit 2 ;;
-esac
+
+for arg in "$@"; do
+  case "$arg" in
+    --only=*)              ONLY="${arg#*=}" ;;
+    --no-impeccable)       WITH_IMPECCABLE=0 ;;
+    --no-firecrawl)        WITH_FIRECRAWL=0 ;;
+    --with-gentle-ai)      WITH_GENTLE_AI=1 ;;
+    --gentle-ai-channel=*) GENTLE_AI_CHANNEL="${arg#*=}" ;;
+    --uninstall)           MODE="uninstall" ;;
+    --dry-run)             MODE="dry-run" ;;
+    --help|-h)             MODE="help" ;;
+    *) echo "Opción desconocida: $arg (usá --help)" >&2; exit 2 ;;
+  esac
+done
 
 say() { printf '\033[1m[guild]\033[0m %s\n' "$1"; }
 
-# OpenCode/Cursor rechazan el frontmatter `tools:` de Claude → se quitan claves solo-Claude y se
-# marca el agente `mode: subagent`. (Claude recibe los archivos tal cual; solo estos destinos se transforman.)
-oc_transform() {  # $1 archivo, $2 dir destino, $3 = agent|command
-  awk -v k="$3" 'BEGIN{fm=0}
-    /^---[[:space:]]*$/{print;fm++;if(fm==1&&k=="agent")print "mode: subagent";next}
-    fm==1&&/^(tools|model|effort|argument-hint):/{next}
-    {print}' "$1" > "$2/$(basename "$1")"
-}
+if [ "$MODE" = "help" ]; then sed -n '2,26p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0; fi
+
+# ── qué pipeline posee cada skill/agente/comando ──────────────────────────────
+# craft-core y los skills auxiliares van SIEMPRE (son la columna compartida).
+skill_pipeline() { case "$1" in
+  landing-craft) echo landing;; app-craft) echo app;; system-craft) echo system;;
+  security-craft) echo security;; *) echo core;; esac; }
+
+# Un agente/ comando pertenece a un pipeline si su nombre está en la lista del pipeline.
+# (Los oficios no llevan prefijo, así que mantenemos un índice explícito.)
+LANDING_ROLES="surveyor cartographer strategist draughtsman wordsmith stylist wright choreographer burnisher crier arbiter courier assessor restorer"
+APP_ROLES="prospector ethnographer wayfinder artificer framer envoy joiner steward conductor lapidary magistrate examiner renovator"
+SYSTEM_ROLES="scout architect quartermaster archivist codifier foreman herald navigator mason inspector smith"
+SECURITY_ROLES="sentinel breaker warden locksmith"
+
+role_pipeline() { for r in $LANDING_ROLES; do [ "$1" = "$r" ] && { echo landing; return; }; done
+  for r in $APP_ROLES; do [ "$1" = "$r" ] && { echo app; return; }; done
+  for r in $SYSTEM_ROLES; do [ "$1" = "$r" ] && { echo system; return; }; done
+  for r in $SECURITY_ROLES; do [ "$1" = "$r" ] && { echo security; return; }; done
+  echo core; }
+
+wanted() { # $1 = pipeline de la pieza. core siempre entra.
+  [ "$1" = core ] && return 0
+  [ -z "$ONLY" ] && return 0
+  case ",$ONLY," in *",$1,"*) return 0;; *) return 1;; esac; }
 
 # ── de dónde sale la fuente ───────────────────────────────────────────────────
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TMP=""
 if [ -d "$SELF_DIR/skills" ] && [ -d "$SELF_DIR/agents" ]; then
-  SRC="$SELF_DIR"                       # ejecutado desde el repo (modo local)
-  say "Fuente local: $SRC"
+  SRC="$SELF_DIR"; [ "$MODE" = install ] && say "Fuente local: $SRC"
 else
   TMP="$(mktemp -d)"; trap 'rm -rf "${TMP:?}"' EXIT
   say "Descargando guild…"
-  if command -v git >/dev/null 2>&1; then
-    git clone --depth 1 --branch "$BRANCH" "$REPO" "$TMP/guild" >/dev/null 2>&1
-    SRC="$TMP/guild"
-  else
-    curl -fsSL "$REPO/archive/refs/heads/$BRANCH.tar.gz" -o "$TMP/g.tar.gz"
-    tar -xzf "$TMP/g.tar.gz" -C "$TMP"; SRC="$TMP/guild-$BRANCH"
-  fi
+  if command -v git >/dev/null 2>&1; then git clone --depth 1 --branch "$BRANCH" "$REPO" "$TMP/guild" >/dev/null 2>&1; SRC="$TMP/guild"
+  else curl -fsSL "$REPO/archive/refs/heads/$BRANCH.tar.gz" -o "$TMP/g.tar.gz"; tar -xzf "$TMP/g.tar.gz" -C "$TMP"; SRC="$TMP/guild-$BRANCH"; fi
 fi
 
 # ── desinstalar ───────────────────────────────────────────────────────────────
 if [ "$MODE" = "uninstall" ]; then
   for base in "$CLAUDE_DIR" "$OPENCODE_DIR" "$CURSOR_DIR"; do
     [ -d "$base" ] || continue
-    for sd in skills; do for d in "$SRC"/skills/*/; do rm -rf "$base/$sd/$(basename "$d")"; done; done
-    for ad in agents agent;   do [ -d "$base/$ad" ] && for f in "$SRC"/agents/*.md;   do rm -f "$base/$ad/$(basename "$f")"; done; done
+    for d in "$SRC"/skills/*/; do rm -rf "$base/skills/$(basename "$d")"; done
+    for ad in agents agent;    do [ -d "$base/$ad" ] && for f in "$SRC"/agents/*.md;   do rm -f "$base/$ad/$(basename "$f")"; done; done
     for cd in commands command; do [ -d "$base/$cd" ] && for f in "$SRC"/commands/*.md; do rm -f "$base/$cd/$(basename "$f")"; done; done
   done
-  say "Desinstalado. (settings.json y tu perfil de shell NO se tocaron.)"
-  exit 0
+  say "Desinstalado el gremio. (Impeccable, Gentle AI, settings.json y tu shell NO se tocaron.)"; exit 0
 fi
 
 DRY=""; [ "$MODE" = "dry-run" ] && DRY="1"
-copy_skills() { [ -n "$DRY" ] && return 0; for d in "$SRC"/skills/*/; do n="$(basename "$d")"; rm -rf "${1:?}/${n:?}"; cp -R "$d" "$1/$n"; done; }
 
-# Impeccable (terceros, Apache-2.0) — motor estético que landing-craft/app-craft usan.
-if [ "$WITH_IMPECCABLE" = "1" ] && [ -z "$DRY" ] && [ ! -d "$SRC/skills/impeccable" ] && command -v git >/dev/null 2>&1; then
-  say "Trayendo Impeccable… (el paso lento — unos segundos; GUILD_IMPECCABLE=0 para saltarlo)"
-  if git clone --depth 1 https://github.com/pbakaus/impeccable.git "${TMP:-$SELF_DIR/.tmp}/imp" >/dev/null 2>&1 \
-     && [ -d "${TMP:-$SELF_DIR/.tmp}/imp/.agents/skills/impeccable" ]; then
-    cp -R "${TMP:-$SELF_DIR/.tmp}/imp/.agents/skills/impeccable" "$SRC/skills/impeccable"
+# OpenCode/Cursor rechazan el frontmatter `tools:` de Claude → transform.
+oc_transform() { awk -v k="$3" 'BEGIN{fm=0}
+  /^---[[:space:]]*$/{print;fm++;if(fm==1&&k=="agent")print "mode: subagent";next}
+  fm==1&&/^(tools|model|effort|argument-hint):/{next}{print}' "$1" > "$2/$(basename "$1")"; }
+
+install_into() { # $1 = base dir, $2 = agent-subdir, $3 = cmd-subdir, $4 = transform(1/0)
+  local base="$1" asub="$2" csub="$3" tr="$4"
+  mkdir -p "$base/skills" "$base/$asub" "$base/$csub"
+  for d in "$SRC"/skills/*/; do n="$(basename "$d")"
+    wanted "$(skill_pipeline "$n")" || continue
+    [ -n "$DRY" ] && continue; rm -rf "$base/skills/$n"; cp -R "$d" "$base/skills/$n"; done
+  # Impeccable (si se copió a la fuente) va con landing/app o si no hay --only
+  for f in "$SRC"/agents/*.md; do n="$(basename "$f" .md)"
+    wanted "$(role_pipeline "$n")" || continue
+    [ -n "$DRY" ] && continue
+    if [ "$tr" = 1 ]; then oc_transform "$f" "$base/$asub" agent; else cp "$f" "$base/$asub/"; fi; done
+  for f in "$SRC"/commands/*.md; do
+    [ -n "$DRY" ] && continue
+    if [ "$tr" = 1 ]; then oc_transform "$f" "$base/$csub" command; else cp "$f" "$base/$csub/"; fi; done
+}
+
+# ── Impeccable (terceros, MIT) — se copia a la fuente para que todo destino lo reciba ──
+if [ "$WITH_IMPECCABLE" = 1 ] && [ -z "$DRY" ] && [ ! -d "$SRC/skills/impeccable" ] \
+   && { [ -z "$ONLY" ] || case ",$ONLY," in *,landing,*|*,app,*) true;; *) false;; esac; } \
+   && command -v git >/dev/null 2>&1; then
+  say "Trayendo Impeccable… (GUILD_IMPECCABLE=0 o --no-impeccable para saltarlo)"
+  _it="${TMP:-$(mktemp -d)}"
+  git clone --depth 1 https://github.com/pbakaus/impeccable.git "$_it/imp" >/dev/null 2>&1 \
+    && [ -d "$_it/imp/.agents/skills/impeccable" ] && cp -R "$_it/imp/.agents/skills/impeccable" "$SRC/skills/impeccable" || true
+fi
+
+SK=$(find "$SRC"/skills -maxdepth 1 -mindepth 1 -type d | wc -l|tr -d ' ')
+AG=$(find "$SRC"/agents -name '*.md'|wc -l|tr -d ' ')
+CM=$(find "$SRC"/commands -name '*.md'|wc -l|tr -d ' ')
+
+if [ -n "$DRY" ]; then
+  say "[dry-run] Fuente: $SK skills · $AG agentes · $CM comandos"
+  say "[dry-run] Pipelines: ${ONLY:-todos} · Impeccable=$WITH_IMPECCABLE · Firecrawl=$WITH_FIRECRAWL · GentleAI=$WITH_GENTLE_AI"
+  say "[dry-run] Destinos: Claude Code$([ -d "$OPENCODE_DIR" ]||command -v opencode>/dev/null 2>&1 && echo ' + OpenCode') $([ -d "$CURSOR_DIR" ]||command -v cursor>/dev/null 2>&1 && echo '+ Cursor')"
+  say "[dry-run] Nada se modificó."; exit 0
+fi
+
+say "Instalando ${ONLY:+pipelines $ONLY }en Claude Code…"
+install_into "$CLAUDE_DIR" agents commands 0
+INST="Claude"
+if [ -d "$OPENCODE_DIR" ] || command -v opencode >/dev/null 2>&1; then install_into "$OPENCODE_DIR" agent command 1; INST="$INST OpenCode"; fi
+if [ -d "$CURSOR_DIR" ]   || command -v cursor   >/dev/null 2>&1; then install_into "$CURSOR_DIR" agents commands 1; INST="$INST Cursor"; fi
+say "Instalado en: $INST"
+say ""
+say "Pipelines:  /landing · /app · /proyecto · /seguridad   (oficios en docs/OFICIOS.md)"
+
+# ── Firecrawl (opcional — solo un aviso si no está) ───────────────────────────
+if [ "$WITH_FIRECRAWL" = 1 ]; then
+  if [ -n "${FIRECRAWL_URL:-}" ] || { [ -f "$CLAUDE_DIR/settings.json" ] && grep -q FIRECRAWL_URL "$CLAUDE_DIR/settings.json" 2>/dev/null; }; then
+    say "Firecrawl ya configurado — ok."
+  else
+    say "Firecrawl (opcional, research de landing): definí FIRECRAWL_URL en tu shell cuando quieras."
   fi
 fi
 
-SKILL_COUNT=$(find "$SRC"/skills -maxdepth 1 -mindepth 1 -type d | wc -l | tr -d ' ')
-AGENT_COUNT=$(find "$SRC"/agents -maxdepth 1 -name '*.md' | wc -l | tr -d ' ')
-CMD_COUNT=$(find "$SRC"/commands -maxdepth 1 -name '*.md' | wc -l | tr -d ' ')
-INSTALLED=""
-
-if [ -n "$DRY" ]; then
-  say "[dry-run] Instalaría $SKILL_COUNT skills · $AGENT_COUNT agentes · $CMD_COUNT comandos en Claude Code"
-  [ -d "$OPENCODE_DIR" ] || command -v opencode >/dev/null 2>&1 && say "[dry-run] … y en OpenCode"
-  [ -d "$CURSOR_DIR" ]   || command -v cursor   >/dev/null 2>&1 && say "[dry-run] … y en Cursor"
-  say "[dry-run] Nada se modificó."
-  exit 0
-fi
-
-say "Instalando $SKILL_COUNT skills · $AGENT_COUNT agentes · $CMD_COUNT comandos…"
-
-# ── Claude Code (además alimenta a OpenCode, que lee ~/.claude/skills/) ────────
-mkdir -p "$CLAUDE_DIR/skills" "$CLAUDE_DIR/agents" "$CLAUDE_DIR/commands"
-copy_skills "$CLAUDE_DIR/skills"
-cp "$SRC"/agents/*.md   "$CLAUDE_DIR/agents/"
-cp "$SRC"/commands/*.md "$CLAUDE_DIR/commands/"
-INSTALLED="$INSTALLED Claude(~/.claude)"
-
-# ── OpenCode ──────────────────────────────────────────────────────────────────
-if [ -d "$OPENCODE_DIR" ] || command -v opencode >/dev/null 2>&1; then
-  mkdir -p "$OPENCODE_DIR/skills" "$OPENCODE_DIR/agent" "$OPENCODE_DIR/command"
-  copy_skills "$OPENCODE_DIR/skills"
-  for f in "$SRC"/agents/*.md;   do oc_transform "$f" "$OPENCODE_DIR/agent"   agent;   done
-  for f in "$SRC"/commands/*.md; do oc_transform "$f" "$OPENCODE_DIR/command" command; done
-  INSTALLED="$INSTALLED OpenCode(~/.config/opencode)"
-fi
-
-# ── Cursor (best-effort) ──────────────────────────────────────────────────────
-if [ -d "$CURSOR_DIR" ] || command -v cursor >/dev/null 2>&1; then
-  mkdir -p "$CURSOR_DIR/skills" "$CURSOR_DIR/agents" "$CURSOR_DIR/commands"
-  copy_skills "$CURSOR_DIR/skills"
-  for f in "$SRC"/agents/*.md;   do oc_transform "$f" "$CURSOR_DIR/agents"   agent;   done
-  for f in "$SRC"/commands/*.md; do oc_transform "$f" "$CURSOR_DIR/commands" command; done
-  INSTALLED="$INSTALLED Cursor(~/.cursor)"
-fi
-
-say "Instalado en:$INSTALLED"
+# ── Gentle AI (terceros — NO se corre en silencio) ────────────────────────────
+GENTLE_CMD="curl -fsSL https://raw.githubusercontent.com/Gentleman-Programming/gentle-ai/main/scripts/install.sh | bash"
+[ "$GENTLE_AI_CHANNEL" != stable ] && GENTLE_CMD="$GENTLE_CMD -s -- --channel $GENTLE_AI_CHANNEL"
 say ""
-say "Los cuatro pipelines del gremio:"
-say "  landing  →  /landing \"<tu producto>\"          un sitio de marketing, desplegado"
-say "  app      →  /app \"<lo que necesitás>\"          la interfaz de una aplicación"
-say "  system   →  /proyecto \"<tu sistema>\"           el proyecto entero, con arquitectura y CI"
-say "  security →  /seguridad \"<qué endurecer>\"       ataca tu propia obra y la endurece"
-say ""
-
-# ── Firecrawl (opcional — landing-craft lo usa para investigación de mercado) ──
-_profile="$HOME/.profile"
-case "${SHELL##*/}" in zsh) _profile="$HOME/.zshrc" ;; bash) _profile="$HOME/.bashrc" ;; esac
-_fc_found=""
-if [ -n "${FIRECRAWL_URL:-}" ]; then _fc_found="shell env"
-elif [ -f "$CLAUDE_DIR/settings.json" ] && grep -q 'FIRECRAWL_URL' "$CLAUDE_DIR/settings.json" 2>/dev/null; then _fc_found="~/.claude/settings.json"
-elif grep -q '^export FIRECRAWL_URL=' "$_profile" 2>/dev/null; then _fc_found="$_profile"; fi
-if [ -n "$_fc_found" ]; then
-  say "Firecrawl ya configurado (en $_fc_found) — se omite."
+if [ "$WITH_GENTLE_AI" = 1 ]; then
+  say "Gentle AI: corriendo su instalador oficial (Gentleman-Programming/gentle-ai)…"
+  bash -c "$GENTLE_CMD" || say "  El instalador de Gentle AI falló o se canceló — guild ya quedó instalado igual."
 else
-  say "Firecrawl (opcional, para investigación de mercado de landing-craft): definí FIRECRAWL_URL en tu shell cuando quieras."
+  say "Gentle AI (memoria + SDD + skills, de Gentleman-Programming) NO se instaló."
+  say "  Es un instalador de terceros que configura tu entorno. Si lo querés, corré su comando oficial:"
+  say "    $GENTLE_CMD"
+  say "  O reinstalá guild con --with-gentle-ai para que lo corra por vos."
 fi
-
 say ""
-say "Recargá tu herramienta (Claude: /reload-plugins · OpenCode: reiniciar) y probá /proyecto o /seguridad."
+say "Recargá tu herramienta (Claude: /reload-plugins) y probá /proyecto o /seguridad."

@@ -37,6 +37,21 @@ y Cursor si los tenés—. Idempotente, sin sudo, nada en segundo plano.
 ./install.sh --uninstall   # quitar lo que puso (settings y perfil de shell no se tocan)
 ```
 
+**Elegís qué instala** (por defecto, todo):
+
+| Flag | Efecto |
+|---|---|
+| `--only=landing,system` | Solo esos pipelines (de `landing app system security`) |
+| `--no-impeccable` | No traer Impeccable (motor estético de landing/app) |
+| `--no-firecrawl` | No configurar Firecrawl (research de landing) |
+| `--with-gentle-ai` | Además, correr el instalador oficial de [Gentle AI](https://github.com/Gentleman-Programming/gentle-ai) |
+| `--help` | Ver todo |
+
+**Dependencias externas** — el gremio no las esconde:
+
+- **Impeccable** ([`pbakaus/impeccable`](https://github.com/pbakaus/impeccable), MIT) — se copia. Motor estético de landing/app.
+- **Gentle AI** ([`Gentleman-Programming/gentle-ai`](https://github.com/Gentleman-Programming/gentle-ai)) — memoria persistente + SDD + skills. NO se copia ni se corre en silencio: por defecto el instalador imprime su comando oficial; con `--with-gentle-ai` lo corre. Es código de un tercero que reconfigura tu entorno — correrlo es tu decisión.
+
 Cuando el repo esté en GitHub, también:
 
 ```bash
