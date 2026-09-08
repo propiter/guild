@@ -1,0 +1,93 @@
+<!-- ============================================================
+INSTRUCCIONES DE USO — BORRAR ESTE BLOQUE AL LLENAR EL DOCUMENTO
+
+ROADMAP.md responde "qué sigue, en qué orden, y qué quedó pendiente a
+propósito". La sección más importante de este documento es "Deuda
+técnica registrada (no silenciosa)": es el mecanismo que reemplaza al
+comentario TODO perdido en el código. Un TODO en el código lo ve solo
+quien abre ese archivo; una fila acá la ve cualquiera que lea el
+roadmap antes de arrancar una fase nueva.
+
+Por qué la tabla de deuda tiene EXACTAMENTE estas columnas:
+- Tarea: qué falta, en una frase.
+- Por qué no se hizo ya: la justificación real, no "no hubo tiempo". Si
+  la razón es "no hubo tiempo", es una admisión de que es deuda por
+  descuido, no por decisión — igual regístrala, pero no la disfraces.
+- Cuándo: una ventana concreta ("F1", "antes de v1", "cuando el ritmo de
+  X lo justifique") — nunca "después" a secas. Una ventana sin fase ni
+  condición no es una ventana, es una promesa vacía.
+
+Cuando una fila de deuda se cierra: TACHALA (`~~D5~~`) y anotá cómo y
+cuándo se resolvió, en vez de borrarla. El historial de qué se dejó
+pendiente y se cerró de verdad es una prueba de que el mecanismo
+funciona — borrar la fila la hace indistinguible de una deuda que nunca
+existió.
+
+Revisá la tabla completa periódicamente (no solo agregar filas): una
+deuda puede quedar mal dimensionada con el tiempo (la ventana ya pasó, o
+el mundo que describía cambió). Reescribila en el mismo movimiento en que
+la detectes, no la dejes describiendo un mundo que ya no existe — eso es
+peor que no tener el registro, porque el que la lee la da por conocida y
+no vuelve a mirar.
+============================================================ -->
+
+# Roadmap — {{NOMBRE_PROYECTO}}
+
+> Filosofía: cada fase deja algo **usable**, sin pintar el diseño a una esquina.
+
+---
+
+## Norte
+
+{{OBJETIVO_DE_LARGO_PLAZO_EN_2_3_LINEAS}}
+
+---
+
+## Fases
+
+### F0 — {{NOMBRE_FASE}} `[{{ETIQUETA_CORTA}}]`
+**Objetivo:** {{OBJETIVO_DE_LA_FASE}}.
+- {{ENTREGABLE_1}}
+- {{ENTREGABLE_2}}
+- **SDDs:** {{LISTA_DE_CAPABILITIES_COMO_SDD}}
+
+### F1 — {{NOMBRE_FASE}} `[{{ETIQUETA_CORTA}}]`
+**Objetivo:** {{OBJETIVO}}.
+- {{ENTREGABLE_1}}
+- **SDDs:** {{...}}
+
+<!-- Repetir una sección por fase. Cada fase declara su objetivo ANTES de la lista de
+entregables — el objetivo es lo que permite decidir si algo pertenece a esta fase o a
+otra. -->
+
+---
+
+## Dependencias
+
+```
+{{DIAGRAMA_ASCII_DE_DEPENDENCIAS_ENTRE_FASES}}
+```
+
+## Hitos {{COMERCIALES_O_DE_PRODUCTO}}
+
+- **{{HITO_1}}:** {{QUE_SE_LOGRA_Y_QUE_TODAVIA_NO}}
+- **{{HITO_2}}:** {{...}}
+
+---
+
+## Deuda técnica registrada (no silenciosa)
+
+> Cosas detectadas y **deliberadamente no cerradas todavía**, con su motivo. Nada de esto
+> se descubrió tarde: está acá para que no se pierda.
+
+| # | Tarea | Por qué no se hizo ya | Cuándo |
+|---|---|---|---|
+| D1 | {{TAREA_PENDIENTE}} | {{MOTIVO_REAL_DEL_APLAZAMIENTO}} | {{VENTANA_CONCRETA}} |
+| ~~D2~~ | ~~{{TAREA_YA_RESUELTA}}~~ | **RESUELTO {{FECHA}}** ({{PR_O_COMMIT}}). {{QUE_SE_HIZO}}. | ✅ Cerrado |
+
+## Decisiones del owner que afectan el roadmap
+
+> Decisiones que no son técnicas (plata, marca, compras externas) pero que bloquean o
+> reordenan fases. Separadas de la deuda técnica porque su dueño es otra persona.
+
+- {{DECISION_PENDIENTE_DEL_OWNER}} — {{QUE_FASE_BLOQUEA}}

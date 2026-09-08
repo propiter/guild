@@ -1,0 +1,71 @@
+# ==============================================================================
+# {{PROJECT_NAME}} — imagen de producción
+#
+#   docker build -t {{IMAGE_NAME}}:{{TAG}} .
+#
+# Se instala desde el WHEEL, no copiando `src/` a mano. Si tu paquete lleva datos
+# no-Python empaquetados vía `force-include` (pyproject.toml), copiar `src/` sin
+# pasar por el wheel deja la imagen sin ellos — el proceso arranca pero no conoce
+# ninguno de sus datos de configuración. Si tu paquete tiene ese caso, agregá acá
+# el `COPY` de esos archivos ANTES del `uv build`, con el mismo path que declaraste
+# en `force-include`; si no, borrá esta nota.
+# ==============================================================================
+
+ARG PYTHON_VERSION=3.13-slim-bookworm
+
+# ---- Build: construye el wheel con uv ----
+FROM python:${PYTHON_VERSION} AS build
+COPY --from=ghcr.io/astral-sh/uv:0.9.7 /uv /usr/local/bin/uv
+WORKDIR /repo
+
+COPY pyproject.toml uv.lock README.md ./
+COPY src ./src
+# Si tu pyproject.toml declara `force-include` para datos no-Python, copiá esas
+# rutas acá también — el build falla con "Forced include not found" si falta
+# alguna, y ESO es preferible a un wheel silenciosamente incompleto.
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv build --wheel --out-dir /dist
+
+# ---- Runtime: solo el wheel y sus dependencias ----
+FROM python:${PYTHON_VERSION} AS runtime
+
+# Usuario sin privilegios. Un servicio expuesto a la red no corre como root para
+# arrancar un servidor HTTP.
+RUN groupadd --system --gid 10001 {{PROJECT_PACKAGE}} \
+ && useradd --system --uid 10001 --gid {{PROJECT_PACKAGE}} --home-dir /app --no-create-home {{PROJECT_PACKAGE}}
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+WORKDIR /app
+
+COPY --from=build /dist/*.whl /tmp/
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir /tmp/*.whl \
+ && rm -f /tmp/*.whl
+
+USER {{PROJECT_PACKAGE}}
+EXPOSE 8000
+
+# ── HEALTHCHECK: valida CONTENIDO de la respuesta, no solo que el puerto abra ──
+#
+# Un contenedor que responde 200 en la raíz y 422/500 en cada operación real está
+# "sano" para Docker y roto para el negocio — el orquestador lo daría por bueno
+# mientras no sirve para nada. Este chequeo verifica un campo del cuerpo que
+# refleje que el proceso terminó de cargar su estado real (parámetros de
+# configuración, tablas de referencia), no solo que aceptó la conexión TCP.
+#
+# Igual que en el perfil TypeScript: este endpoint es LIVENESS ("¿hay que
+# reiniciarme?"), sin I/O a servicios externos. Si tu servicio depende de una base
+# de datos y necesitás además un endpoint de READINESS ("¿me mandás tráfico?") que
+# sí pruebe esa conexión, ese endpoint NO va en este HEALTHCHECK — un fallo acá
+# reinicia el proceso, y reiniciar no arregla una base caída.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD python -c "import urllib.request,sys,json; \
+r=urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=4); \
+d=json.load(r); sys.exit(0 if d.get('estado')=='ok' else 1)"
+
+CMD ["uvicorn", "{{PROJECT_PACKAGE}}.infraestructura.api.app:app", \
+     "--host", "0.0.0.0", "--port", "8000", \
+     "--proxy-headers", "--forwarded-allow-ips", "*"]

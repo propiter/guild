@@ -1,0 +1,186 @@
+# ==============================================================================
+# {{PROJECT_NAME}} — servicios de DESARROLLO y TEST (Postgres + Redis)
+#
+# POR QUÉ EXISTE ESTE ARCHIVO
+# ───────────────────────────
+# El CI (`templates/github/workflows/ci.yml.template`) levanta Postgres con los
+# `services:` nativos de GitHub Actions — gratis, sin este archivo. Pero en LOCAL
+# no hay ningún equivalente: sin esto, correr los tests de integración exige
+# instalar Postgres a mano en la máquina (o en la de un agente), con la versión
+# que a cada quien le tocó, sin healthcheck, sin aislamiento entre proyectos.
+# Eso rompe el principio central del kit: "`verify` local reproduce EXACTAMENTE
+# lo que corre el CI". Si el CI tiene base y el local no, `verify` no puede
+# reproducir nada — se salta el paso o falla siempre, y las dos son peores que
+# tenerlo. Este archivo es la parte que faltaba.
+#
+# CÓMO SE USA (ver también templates/docker/README.md)
+#   docker compose -f docker/docker-compose.dev.yml --env-file docker/.env up -d
+#   bash docker/scripts/wait-for-healthy.sh docker/docker-compose.dev.yml db db-test redis
+#   docker compose -f docker/docker-compose.dev.yml --env-file docker/.env down
+#
+# En los perfiles del kit esto ya queda encadenado en `db:up` / `db:down` /
+# `db:reset` / `db:wait` (package.json del perfil TypeScript, Makefile del
+# perfil Python) — no hace falta escribir el comando largo a mano.
+#
+# SI TU PROYECTO NO USA REDIS: borrá el servicio `redis` entero (bloque de
+# abajo) y sacá `REDIS_*` de `.env` — un contenedor que nadie usa sólo demora
+# `db:up` y consume memoria sin motivo.
+#
+# SI TU PROYECTO NO USA POSTGRES: este kit no tiene otro motor evidenciado en
+# sus fuentes (ver `templates/profiles/README.md`) — no se inventa acá. Cambiá
+# la imagen y el healthcheck por los de tu motor real, con el mismo criterio
+# (versión fijada, puerto no estándar, healthcheck de verdad).
+# ==============================================================================
+
+# El nombre del proyecto Compose. Evita que "postgres_data" de ESTE proyecto
+# choque con el volumen "postgres_data" de OTRO proyecto de este kit en la
+# misma máquina — sin esto, dos checkouts distintos comparten contenedor y
+# volumen por accidente, con el nombre por defecto ("postgres") de docker
+# compose. Ver PROJECT_NAME en docker/.env.
+name: ${PROJECT_NAME:-{{PROJECT_NAME}}}-dev
+
+services:
+  # ── Postgres de DESARROLLO — datos persistentes entre reinicios ────────────
+  db:
+    # Versión FIJADA, nunca `latest`. `latest` en un compose de desarrollo
+    # significa que dos personas del mismo equipo (o un agente en dos
+    # corridas distintas) pueden estar probando contra versiones distintas de
+    # Postgres sin saberlo — un `ALTER` que funciona en una versión y no en
+    # otra se descubre recién en producción. Ajustá el número al Postgres que
+    # declaraste en `docs/STACK.md` y en `{{DB_IMAGE}}` de `ci.yml.template`
+    # — TIENEN que coincidir, o "funciona en mi local" deja de significar algo.
+    image: ${DB_IMAGE:-{{DB_IMAGE}}}
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-{{DB_USER}}}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-{{DB_PASSWORD}}}
+      POSTGRES_DB: ${DB_NAME:-{{DB_NAME}}}
+    ports:
+      # Puerto NO estándar y PARAMETRIZABLE. El estándar (5432) es justo el
+      # que más probablemente ya esté ocupado: mucha gente tiene un Postgres
+      # instalado directo en el sistema, o VS Code/otro proyecto lo dejó
+      # corriendo. Publicar en 5432 produce "port is already allocated" la
+      # primera vez que alguien lo corre, y ese error no dice NADA sobre qué
+      # otro proceso lo tiene — sólo que hay un conflicto. Publicar en un
+      # puerto alto y parametrizado (`DB_PORT`, default sugerido 55432 en
+      # `.env.example`) hace que la colisión sea rarísima, y si igual ocurre,
+      # cambiar UN número en `.env` la resuelve sin tocar nada más.
+      - "${DB_PORT:-55432}:5432"
+    volumes:
+      # Volumen NOMBRADO y prefijado con el proyecto (ver `name:` arriba) —
+      # persiste entre `docker compose down` (sin `-v`) y `restart`. Esto es
+      # a propósito: es la base de DESARROLLO, seedeás datos una vez y querés
+      # que sigan ahí mañana. La de TEST (`db-test`, abajo) hace justo lo
+      # contrario.
+      - postgres_dev_data:/var/lib/postgresql/data
+    # HEALTHCHECK — el punto que más falla en la práctica si falta.
+    # `docker compose up -d` devuelve el control en cuanto el PROCESO arranca,
+    # no cuando puede aceptar conexiones. Postgres tarda del orden de 1-3
+    # segundos en terminar su inicialización (WAL, checkpoints) DESPUÉS de que
+    # el contenedor ya figura "Up". Sin este healthcheck, el primer test que
+    # corre justo después de `db:up` falla con `ECONNREFUSED` de forma
+    # INTERMITENTE — a veces pasa (la máquina estaba rápida ese día), a veces
+    # no, y ese tipo de fallo intermitente es el más caro de diagnosticar
+    # porque no se reproduce siempre. `pg_isready` pregunta al proceso real,
+    # no al estado del contenedor — es la diferencia entre "arrancado" y
+    # "listo". `db:wait` (scripts/wait-for-healthy.sh) espera a este estado
+    # antes de dar el visto bueno.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-{{DB_USER}}} -d ${DB_NAME:-{{DB_NAME}}}"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+      start_period: 2s
+
+  # ── Postgres de TEST — datos en tmpfs, se pierden al apagar (A PROPÓSITO) ──
+  db-test:
+    # MISMA imagen que `db` — si difieren, "pasa en test y falla en dev" (o
+    # viceversa) es un bug de Postgres entre versiones, no de tu código.
+    image: ${DB_IMAGE:-{{DB_IMAGE}}}
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-{{DB_USER}}}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-{{DB_PASSWORD}}}
+      POSTGRES_DB: ${DB_NAME:-{{DB_NAME}}}
+      # fsync/full_page_writes sólo protegen contra una caída de corriente o
+      # un crash del proceso — la única forma en que la base de TEST "muere"
+      # es que vos le mandes `down`. Apagarlos convierte cada escritura en
+      # una operación de memoria pura: en proyectos reales, una suite de
+      # integración con cientos de inserts/updates corre sensiblemente más
+      # rápido (el cuello de botella deja de ser el disco/fsync). El trade-off
+      # es exactamente el que querés en test: si el proceso de Postgres muere
+      # a mitad de una escritura, los datos pueden quedar corruptos — pero
+      # como este contenedor es 100% descartable (nunca guarda nada que
+      # importe entre corridas), "corrupto" y "se resetea solo" son lo mismo.
+      POSTGRES_INITDB_ARGS: "--no-sync"
+    command: ["postgres", "-c", "fsync=off", "-c", "full_page_writes=off", "-c", "synchronous_commit=off"]
+    ports:
+      # Puerto DISTINTO al de `db` — las dos bases conviven. Corré tus tests
+      # de integración contra ESTE puerto (`DB_TEST_PORT`), nunca contra el de
+      # desarrollo: si compartieran instancia, una suite de tests que hace
+      # `TRUNCATE` o `DROP SCHEMA` te borra los datos que sembraste a mano en
+      # `db` — el aislamiento entre "mi entorno de trabajo" y "lo que los
+      # tests destruyen sin avisar" es el motivo real de tener DOS servicios,
+      # no sólo velocidad.
+      - "${DB_TEST_PORT:-55433}:5432"
+    tmpfs:
+      # DATOS EN TMPFS: el directorio de datos de Postgres vive en RAM, nunca
+      # toca disco. Dos consecuencias, ambas buscadas:
+      #   1. Velocidad: sin I/O de disco real, los tests de integración corren
+      #      dramáticamente más rápido — es la optimización de mayor impacto
+      #      para una suite que crea/destruye esquemas seguido.
+      #   2. Estado limpio garantizado: al no persistir nada, un
+      #      `docker compose down` (o un simple restart del contenedor) borra
+      #      TODA la data. No hay forma de que un test de la corrida anterior
+      #      deje basura que contamine la siguiente — el "cada arranque parte
+      #      limpio" no depende de que alguien se acuerde de limpiar, es una
+      #      propiedad del contenedor.
+      # TRADE-OFF que hay que decir en voz alta: esto es RAM, no disco — un
+      # dataset de test grande (miles de filas de fixtures) consume memoria
+      # de la máquina mientras el contenedor esté arriba. Para un dataset de
+      # test (que por definición es chico, no un dump de producción) el
+      # costo es despreciable frente a la velocidad que compra.
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-{{DB_USER}}} -d ${DB_NAME:-{{DB_NAME}}}"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+      start_period: 2s
+
+  # ── Redis — cache / colas de desarrollo Y test ──────────────────────────────
+  # Sin volumen a propósito: sin un volumen montado, lo que Redis escribe vive
+  # en la capa efímera del contenedor. Un `docker compose down` (con o sin
+  # `-v`) lo borra igual — no hace falta la distinción dev/test en dos
+  # servicios separados como con Postgres, porque por defecto YA es efímero.
+  # Si tu proyecto necesita persistencia de Redis entre reinicios (colas que
+  # no podés perder), agregá un volumen y sacá este comentario.
+  redis:
+    # Versión FIJADA — mismo motivo que Postgres arriba: sin fijar, "funciona
+    # en mi local" deja de ser una garantía reproducible.
+    image: ${REDIS_IMAGE:-{{REDIS_IMAGE}}}
+    restart: unless-stopped
+    ports:
+      # Puerto no estándar y parametrizable — mismo motivo que `DB_PORT`: el
+      # 6379 estándar es el que más probablemente ya esté tomado por un Redis
+      # instalado a mano o por otro proyecto.
+      - "${REDIS_PORT:-56379}:6379"
+    healthcheck:
+      # `redis-cli ping` espera la respuesta real del proceso ("PONG"), no
+      # sólo que el puerto TCP acepte la conexión — mismo razonamiento que
+      # `pg_isready` arriba: un socket que acepta conexiones no es lo mismo
+      # que un proceso que ya terminó de inicializarse y puede responder.
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+      start_period: 2s
+
+volumes:
+  # Nombre explícito y prefijado con el proyecto — junto con `name:` de más
+  # arriba, es lo que evita que dos proyectos de este kit en la misma máquina
+  # (del mismo autor, dos checkouts distintos) terminen leyendo o pisando el
+  # volumen de datos del otro por compartir el nombre por defecto que Compose
+  # generaría a partir del nombre de la carpeta.
+  postgres_dev_data:
+    name: ${PROJECT_NAME:-{{PROJECT_NAME}}}_postgres_dev_data

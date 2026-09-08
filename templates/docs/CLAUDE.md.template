@@ -1,0 +1,109 @@
+<!-- ============================================================
+INSTRUCCIONES DE USO — BORRAR ESTE BLOQUE AL LLENAR EL DOCUMENTO
+
+Este archivo va a la RAÍZ del repo (no a docs/). Es distinto de
+AGENT-ONBOARDING.md: este se carga AUTOMÁTICO en cada sesión (el agente
+no elige leerlo), así que tiene que ser corto, operativo y estable. El
+onboarding es el prompt que se pega una vez al ARRANCAR una sesión nueva
+y habla de MÉTODO; este archivo habla de CONVENCIONES DE CÓDIGO DEL DÍA
+A DÍA — dónde está cada cosa, qué comando corre qué, qué no se hace
+nunca.
+
+Por qué esto vale la pena tenerlo separado de STANDARDS.md: STANDARDS.md
+es el molde detallado de CÓMO se construye una pieza (para leer antes de
+escribir código nuevo); CLAUDE.md es la referencia rápida que se carga
+siempre, con lo mínimo para no romper nada mientras se trabaja en
+cualquier cosa. Si una sección crece mucho, es señal de que ese contenido
+pertenece a STANDARDS.md o ARQUITECTURA.md, y acá debería quedar solo un
+link.
+
+Mantené la estructura del árbol de directorios ACTUALIZADA Y REAL — marcá
+explícitamente lo que todavía no existe (`(planeado)`), para que un
+agente no asuma que una carpeta ya está poblada.
+============================================================ -->
+
+# CLAUDE.md — Instrucciones operativas
+
+> Este archivo se carga automáticamente en cada sesión en este repo. Léelo siempre antes
+> de actuar.
+
+## Qué estamos construyendo
+
+**{{NOMBRE_PROYECTO}}**: {{DESCRIPCION_UNA_LINEA}}.
+
+Lee [docs/BLUEPRINT.md](./docs/BLUEPRINT.md) para el charter y
+[docs/PRD.md](./docs/PRD.md) para el alcance funcional.
+
+## Stack (NO cambiar sin discutir)
+
+- {{CAPA_1}}: **{{ELECCION}}**
+- {{CAPA_2}}: **{{ELECCION}}**
+- {{CAPA_3}}: **{{ELECCION}}**
+
+Detalle y justificación de cada elección: [docs/STACK.md](./docs/STACK.md).
+
+## Estructura del repo
+
+> Marcá con `(planeado)` lo que todavía no existe — un árbol que muestra el destino como
+> si fuera el presente hace que un agente asuma que algo está construido y no lo está.
+
+```
+.
+├── {{carpeta_1}}/              # {{que_contiene}}
+├── {{carpeta_2}}/              # {{que_contiene}}          (planeado)
+├── docs/                       # Documentación (este folder)
+└── {{carpeta_n}}/              # {{que_contiene}}
+```
+
+## Convenciones de código
+
+- **Tipos:** {{ESTRICTO_O_NO_Y_DETALLE}}.
+- **Naming:** DB {{casing_db}}. Código {{casing_codigo}}. Endpoints {{casing_endpoints}}.
+- **IDs públicos:** {{FORMATO}}.
+- **Dinero:** {{TIPO_Y_LIBRERIA}}. `number`/`float` para plata está PROHIBIDO.
+- **Errores:** siguen el formato de [docs/API.md](./docs/API.md#5-errores).
+- **Logs:** estructurados ({{LOGGER}}). Nunca `console.log`/`print` en runtime.
+- **Comentarios:** solo cuando el *por qué* no es obvio. Nunca lo que el código ya dice.
+  Cero `// TODO` sin issue/fila de deuda asociada.
+- **Config/env:** {{REGLA_DE_OWNERSHIP_DE_ENV_SI_APLICA}}.
+
+## Comandos comunes
+
+```bash
+{{COMANDO_DEV}}          # {{que_hace}}
+{{COMANDO_BUILD}}        # {{que_hace}}
+{{COMANDO_TEST}}         # {{que_hace}}
+{{COMANDO_TYPECHECK}}    # {{que_hace}}
+{{COMANDO_LINT}}         # {{que_hace}}
+{{COMANDO_VERIFY}}       # el que corre CI — corré este antes de subir un PR
+```
+
+## Qué NO hacer
+
+- No introducir {{DEPENDENCIA_PROHIBIDA_O_CATEGORIA}} sin discutirlo primero.
+- No usar {{LIBRERIA_DESCARTADA}} aunque sea más popular — se decidió {{ALTERNATIVA_ELEGIDA}}
+  (`STACK.md`).
+- No crear documentación nueva en `docs/` sin que el usuario lo pida. Si encontrás un gap,
+  propónelo primero.
+- No mockear {{FUENTE_DE_VERDAD_EXTERNA}} en tests de integración.
+- No subir `.env`, certificados, secrets ni datos de clientes a git.
+- No usar `console.log`/`print` en código de runtime.
+- No commits con `--no-verify` salvo pedido explícito del usuario.
+
+## Cuando trabajes en una tarea
+
+1. Lee [docs/ROADMAP.md](./docs/ROADMAP.md) para saber en qué fase estamos.
+2. Si la tarea toca {{DOMINIO_SENSIBLE_SI_APLICA}}, consultá {{DOC_DE_REFERENCIA}} primero.
+3. Si tocás la API pública, validá que el cambio quede reflejado en {{DONDE_SE_GENERA_EL_SPEC}}.
+4. Si tocás la base de datos, agregá una migración — nunca edites SQL aplicado a mano.
+5. **Si agregás o tocás una pieza (endpoint/módulo/componente), seguí
+   [STANDARDS.md](./docs/STANDARDS.md)** — el molde, las reglas por dimensión y el
+   Definition of Done. No improvises la estructura.
+6. Si agregás una dependencia nueva, justificá en el commit.
+
+## Estilo de comunicación con el usuario
+
+- {{IDIOMA_POR_DEFECTO}}.
+- Conciso. Sin sumarios decorativos al final.
+- Si una decisión técnica tiene un trade-off relevante, decilo en 2-3 líneas y dejá que
+  decida.

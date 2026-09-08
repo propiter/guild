@@ -1,0 +1,96 @@
+<!-- ============================================================
+INSTRUCCIONES DE USO — BORRAR ESTE BLOQUE AL LLENAR EL DOCUMENTO
+
+INFRAESTRUCTURA.md sigue el patrón "se consulta al tocar infra, no se lee
+de entrada". Es DELIBERADO que el prompt de arranque (AGENT-ONBOARDING.md)
+no repita nada de acá: los datos de infra (URLs, nombres de runners,
+credenciales, capacidad del host) cambian seguido, y un prompt de arranque
+que los repite se pudre — queda mintiendo la primera vez que algo cambia
+y nadie actualiza las dos copias.
+
+Regla de mantenimiento de este archivo, que hay que dejar escrita tal
+cual (no es adorno): "si algo de este archivo no coincide con la
+realidad, gana la realidad. Verificá contra la fuente y corregí el
+archivo en el mismo commit." Por cada dato, poné el comando que lo
+verifica — eso es lo que convierte esta doc en algo que se autocorrige
+en vez de acumular mentiras con el tiempo.
+
+No dupliques acá la lista de deuda técnica — esa vive en ROADMAP.md
+(sección "Deuda técnica registrada"). Si hay deuda de infraestructura
+específicamente, referenciala desde acá, no la copies.
+============================================================ -->
+
+# Infraestructura de {{NOMBRE_PROYECTO}}
+
+> **Esto es referencia, no lectura obligatoria.** Se consulta cuando hace falta tocar CI,
+> el registry, los runners o el deploy. El prompt de arranque (`AGENT-ONBOARDING.md`) no
+> repite nada de acá a propósito: son datos que cambian, y un prompt con datos que cambian
+> miente.
+>
+> **Si algo de este archivo no coincide con la realidad, gana la realidad.** Verificá
+> contra la fuente (los comandos están en cada sección) y corregí el archivo en el mismo
+> commit.
+
+---
+
+## Repositorio
+
+`{{HOST}}/{{ORG}}/{{REPO}}` — {{PUBLICO_O_PRIVADO}}, rama `{{RAMA_PRINCIPAL}}`.
+
+## CI y automatización
+
+| Workflow | Qué hace | Cuándo |
+|---|---|---|
+| `{{workflow_1}}` | {{que_hace}} | {{trigger}} |
+| `{{workflow_2}}` | {{que_hace}} | {{trigger}} |
+
+**Verificar:** `{{COMANDO_PARA_VER_CORRIDAS_DE_CI}}`
+
+### Variables y secrets del repo
+
+| Nombre | Tipo | Valor / para qué |
+|---|---|---|
+| `{{NOMBRE_VAR}}` | variable/secret | {{PARA_QUE_SIRVE}} |
+
+**Verificar:** `{{COMANDO_PARA_LISTAR_VARS}}` · `{{COMANDO_PARA_LISTAR_SECRETS}}`
+
+## Runners / cómputo de CI
+
+{{DONDE_CORRE_CI: self-hosted / cloud, cuántos runners, capacidad}}.
+
+> Si el host es compartido con otros proyectos: decilo, y dejá medida (no estimada) la
+> capacidad real antes de subir concurrencia. Una decisión de "sumar un runner" o "subir
+> el paralelismo" sin medir es exactamente el tipo de deuda que después alguien tiene que
+> diagnosticar bajo presión.
+
+**Verificar:** `{{COMANDO_PARA_VER_RUNNERS}}`
+
+## Registry
+
+`{{REGISTRY_HOST}}`, namespace `{{NAMESPACE}}`.
+
+| Imagen | Tags |
+|---|---|
+| `{{imagen}}` | {{convencion_de_tags}} |
+
+**Verificar:** `{{COMANDO_PARA_LISTAR_TAGS}}`
+
+### Agregar una imagen nueva
+
+{{PASOS_PARA_AGREGAR_UNA_IMAGEN_AL_PIPELINE}}
+
+## Deploy
+
+{{PROVEEDOR_DE_DEPLOY}} → {{RUTA_ORGANIZACION_PROYECTO_ENVIRONMENT}}.
+
+El ciclo:
+
+```
+{{DIAGRAMA_DEL_CICLO_DE_DEPLOY: push a main → CI verde → imagen al registry → webhook → deploy}}
+```
+
+**Entorno en vivo:** {{URL}}
+
+## Deuda y límites conocidos
+
+Viven en [`ROADMAP.md`](./ROADMAP.md) → *Deuda técnica registrada*. No se duplican acá.

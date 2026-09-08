@@ -1,0 +1,115 @@
+# ==============================================================================
+# {{PROJECT_NAME}} — la APLICACIÓN dockerizada + sus dependencias
+#
+# QUÉ ES ESTO Y EN QUÉ SE DIFERENCIA DE docker-compose.dev.yml
+# ───────────────────────────────────────────────────────────
+# `docker-compose.dev.yml` levanta Postgres/Redis para que el código corra
+# SUELTO en tu máquina (`pnpm dev`, `uv run uvicorn ...`) contra una base real.
+# Este archivo levanta el ARTEFACTO REAL — la imagen construida con el
+# `Dockerfile` del perfil (`templates/profiles/*/Dockerfile.template`), la
+# misma que se publica en `build-push.yml` y corre en producción — más sus
+# dependencias, en la MISMA red Docker. Sirve para responder una pregunta que
+# `pnpm dev` no puede responder: "¿el artefacto empaquetado arranca y
+# funciona de verdad, con las variables de entorno de producción, no con las
+# de mi shell local?". Es el mismo espíritu que el smoke test de
+# `build-push.yml.template` — probado acá, antes de empujar nada.
+#
+# NO se comparte con `docker-compose.dev.yml` a propósito: son dos modos de
+# uso distintos (código suelto vs. artefacto empaquetado) que no deberían
+# correr al mismo tiempo — levantarlos juntos duplica el Postgres/Redis y
+# choca puertos. Usá uno u otro, nunca los dos con `-f` combinados.
+#
+# CÓMO SE USA
+#   docker compose -f docker/docker-compose.yml --env-file docker/.env up -d --build
+#   curl http://localhost:${APP_PORT:-3000}/health
+#   docker compose -f docker/docker-compose.yml --env-file docker/.env down
+#
+# El `context: ..` de abajo asume que este archivo vive en `docker/` y el
+# `Dockerfile` en la raíz del repo (igual que en `build-push.yml.template`,
+# que built-ea con `context: .` desde la raíz) — ajustá si tu estructura real
+# difiere.
+# ==============================================================================
+
+name: ${PROJECT_NAME:-{{PROJECT_NAME}}}-app
+
+services:
+  app:
+    build:
+      context: ..
+      # {{DOCKERFILE_PATH}} — la MISMA ruta de Dockerfile que usa
+      # `build-push.yml.template`. Si difieren, estás probando localmente una
+      # imagen distinta de la que se publica — el smoke local deja de
+      # significar algo.
+      dockerfile: "{{DOCKERFILE_PATH}}"
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-3000}:${APP_PORT:-3000}"
+    environment:
+      PORT: ${APP_PORT:-3000}
+      # DNS interno de Compose: dentro de la red del proyecto, los servicios
+      # se resuelven por NOMBRE (`db`, `redis`), y Postgres siempre escucha
+      # en su puerto INTERNO de siempre (5432) — el remapeo de `DB_PORT` en
+      # `docker-compose.dev.yml` sólo afecta el acceso desde el HOST (tu
+      # `psql` local, tu app corriendo suelta). Un contenedor que le hablara
+      # a `localhost:${DB_PORT}` estaría hablándose a SÍ MISMO, no a `db` —
+      # confundir estas dos rutas es el error más común al mezclar Compose
+      # con acceso desde el host.
+      DATABASE_URL: postgresql://${DB_USER:-{{DB_USER}}}:${DB_PASSWORD:-{{DB_PASSWORD}}}@db:5432/${DB_NAME:-{{DB_NAME}}}
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      # `condition: service_healthy`, no sólo "que el contenedor exista". Sin
+      # esto, Compose arranca `app` en cuanto `db`/`redis` figuran "Created" —
+      # ni siquiera "Up" — y la app se cae al primer intento de conexión real
+      # durante su arranque. Con esta condición, Compose espera a que el
+      # HEALTHCHECK de cada dependencia esté en verde antes de crear `app`.
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # SIN healthcheck propio acá copiado del Dockerfile: el `HEALTHCHECK` YA
+    # está declarado en la imagen (ver `Dockerfile.template` del perfil) y
+    # Compose lo hereda automáticamente — declararlo dos veces es la clase de
+    # duplicación que se desincroniza sola la primera vez que alguien lo
+    # cambia en un solo lado.
+
+  db:
+    # Misma imagen y misma versión FIJADA que `docker-compose.dev.yml` — un
+    # smoke local contra una versión de Postgres distinta de la de dev/CI no
+    # prueba lo que dice probar.
+    image: ${DB_IMAGE:-{{DB_IMAGE}}}
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-{{DB_USER}}}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-{{DB_PASSWORD}}}
+      POSTGRES_DB: ${DB_NAME:-{{DB_NAME}}}
+    # SIN puerto publicado al host a propósito: `app` le habla por la red
+    # interna de Compose (`db:5432`). Si además necesitás inspeccionar esta
+    # base con `psql` desde tu máquina mientras el stack completo corre,
+    # descomentá la publicación de abajo con un puerto que NO choque con
+    # `DB_PORT`/`DB_TEST_PORT` de `docker-compose.dev.yml` (los tres no
+    # deberían coincidir si alguna vez corrés ambos compose a la vez para
+    # comparar).
+    # ports:
+    #   - "${DB_PORT:-55432}:5432"
+    volumes:
+      - postgres_app_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-{{DB_USER}}} -d ${DB_NAME:-{{DB_NAME}}}"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+      start_period: 2s
+
+  redis:
+    image: ${REDIS_IMAGE:-{{REDIS_IMAGE}}}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+      start_period: 2s
+
+volumes:
+  postgres_app_data:
+    name: ${PROJECT_NAME:-{{PROJECT_NAME}}}_postgres_app_data

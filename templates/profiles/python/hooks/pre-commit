@@ -1,0 +1,112 @@
+#!/usr/bin/env sh
+# Git invoca los hooks con `sh`, sin importar el shebang del archivo — re-exec
+# en bash para poder usar arrays y el loop NUL-safe de abajo (mismo motivo,
+# letra por letra, que el hook equivalente del perfil TypeScript: ver
+# templates/profiles/typescript/husky/pre-commit).
+if [ -z "$BASH_VERSION" ]; then
+  exec bash "$0" "$@"
+fi
+
+# {{PROJECT_NAME}} — pre-commit hook (perfil Python)
+#
+# Gate LOCAL rápido (~1 segundo): solo los archivos .py en stage. Deliberadamente
+# NO corre mypy ni pytest — son lentos, y un hook lento entrena a la gente a
+# usar `--no-verify` como hábito, que es peor que no tener hook (se pierde la
+# verificación Y la señal de que algo se está saltando). Eso corre completo en
+# pre-push. Misma filosofía de dos velocidades que el perfil TypeScript
+# (ver templates/profiles/typescript/husky/pre-commit).
+#
+# 1. Bloquea cualquier material criptográfico (claves, certificados) que se
+#    intente commitear — nunca deben viajar por Git, sino por el secret store
+#    del proyecto (ver docs/SEGURIDAD.md). Misma lógica, mismos mensajes que
+#    el perfil TypeScript, para que el comportamiento sea idéntico entre
+#    perfiles.
+# 2. Corre Ruff (lint --fix + format) SOLO sobre los .py en stage, y los
+#    re-agrega al stage. Python no tiene un equivalente de `lint-staged`
+#    instalado por defecto (sería sumar una dependencia nueva sólo para
+#    esto) — acá el filtrado a "sólo lo staged" y el re-stage post-fix se
+#    hacen a mano, con las mismas garantías: NUL-safe (soporta paths con
+#    espacios) y con `--diff-filter=ACMR` (Add+Copy+Modify+Rename).
+#
+# Bypass de emergencia: git commit --no-verify (NO usar como hábito)
+
+echo "→ pre-commit: guarda de material criptográfico..."
+
+# diff-filter=ACMR cubre Add + Copy + Modify + Rename — evita bypass por
+# rename/modify de un blob ya staged. Se comprueba por EXTENSIÓN y por
+# CONTENIDO (defensa en profundidad: una extensión puede cambiarse, un header
+# PEM no). NUL-terminated I/O para soportar paths con espacios o saltos de
+# línea.
+SECRETS_STAGED_BY_EXT=$(git diff --cached --name-only --diff-filter=ACMR -z \
+  | tr '\0' '\n' \
+  | grep -E '\.(p12|pem|key|pfx|jks|crt|cer)$' \
+  || true)
+
+# Escanea el CONTENIDO staged buscando headers PEM (claves privadas +
+# certificados). Se saltean archivos >1MB (umbral arbitrario: un .p12/.pem
+# real es típicamente <100KB) y extensiones binarias conocidas que nunca van
+# a contener texto PEM.
+SECRETS_STAGED_BY_CONTENT=""
+PEM_HEADER_REGEX='^-----BEGIN (RSA |EC |DSA |OPENSSH |ENCRYPTED |)?(PRIVATE KEY|CERTIFICATE)-----'
+MAX_SCAN_BYTES=1048576
+
+while IFS= read -r -d '' f; do
+  case "$f" in
+    uv.lock|*.json|*.snap|*.png|*.jpg|*.jpeg|*.gif|*.pdf|*.ico|*.woff*) continue ;;
+  esac
+  size=$(git cat-file -s ":$f" 2>/dev/null || printf 0)
+  [ -z "$size" ] && continue
+  [ "$size" -gt "$MAX_SCAN_BYTES" ] && continue
+  if git show ":$f" 2>/dev/null | grep -qE "$PEM_HEADER_REGEX"; then
+    SECRETS_STAGED_BY_CONTENT="${SECRETS_STAGED_BY_CONTENT}${f}
+"
+  fi
+done < <(git diff --cached --name-only --diff-filter=ACMR -z)
+
+if [ -n "$SECRETS_STAGED_BY_EXT" ] || [ -n "$SECRETS_STAGED_BY_CONTENT" ]; then
+  echo "🚨 BLOQUEO: estás staging material criptográfico — no va a Git."
+  if [ -n "$SECRETS_STAGED_BY_EXT" ]; then
+    echo "  Por extensión sensible:"
+    printf "%s\n" "$SECRETS_STAGED_BY_EXT" | sed 's|.*/||' | sed 's|^|    - |'
+  fi
+  if [ -n "$SECRETS_STAGED_BY_CONTENT" ]; then
+    echo "  Por header PEM/CERT en el contenido:"
+    printf "%s" "$SECRETS_STAGED_BY_CONTENT" | sed 's|.*/||' | sed 's|^|    - |'
+  fi
+  echo
+  echo "Si tu proyecto tiene un caso legítimo de fixture de prueba (certificado"
+  echo "autofirmado, sin valor productivo), agregá una excepción explícita y"
+  echo "revisada por el equipo — nunca ampliada sin revisión."
+  echo "Bypass solo en emergencia: git commit --no-verify"
+  exit 1
+fi
+
+PY_STAGED=()
+while IFS= read -r -d '' f; do
+  case "$f" in
+    *.py) PY_STAGED+=("$f") ;;
+  esac
+done < <(git diff --cached --name-only --diff-filter=ACMR -z)
+
+if [ "${#PY_STAGED[@]}" -eq 0 ]; then
+  echo "→ pre-commit: no hay archivos .py en stage, nada que lintear."
+  exit 0
+fi
+
+echo "→ pre-commit: ruff (lint --fix + format) sobre ${#PY_STAGED[@]} archivo(s) staged..."
+
+if ! uv run ruff check --fix "${PY_STAGED[@]}"; then
+  echo "🚨 ruff encontró problemas que no pudo arreglar solo (arriba, con archivo y línea)." >&2
+  echo "   Corregilos a mano y volvé a hacer 'git add' + 'git commit'." >&2
+  exit 1
+fi
+
+uv run ruff format "${PY_STAGED[@]}"
+
+# Re-agrega al stage lo que ruff acaba de modificar (fix + format). Sin un
+# equivalente de lint-staged que lo haga solo, este paso es manual — si se
+# omite, el commit se hace con la versión SIN arreglar y el fix de ruff queda
+# como un cambio no staged, invisible hasta el próximo `git status`.
+git add -- "${PY_STAGED[@]}"
+
+echo "✓ pre-commit ok"

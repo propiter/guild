@@ -1,0 +1,9 @@
+# Nada que buildear ni instalar acá — es una suite de instrucciones.
+.DS_Store
+*.log
+.tmp/
+node_modules/
+__pycache__/
+*.pyc
+# Artefactos locales de Impeccable que el instalador trae a demanda
+skills/impeccable/

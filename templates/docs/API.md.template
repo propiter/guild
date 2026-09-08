@@ -1,0 +1,132 @@
+<!-- ============================================================
+INSTRUCCIONES DE USO — BORRAR ESTE BLOQUE AL LLENAR EL DOCUMENTO
+
+API.md tiene dos trabajos, y son distintos:
+1. El CONTRATO DE ERROR — el vocabulario cerrado de qué puede salir mal y
+   cómo se representa. Esto SÍ vive completo acá, porque es pequeño y
+   estable, y todo el mundo (SDKs, clientes, tests) depende de que no
+   cambie por sorpresa.
+2. La REFERENCIA de endpoints — la lista de qué existe. Si el proyecto
+   genera OpenAPI/Swagger desde el código (Zod, decorators, etc.), NO
+   pegues acá los bodies de request/response completos: van a driftar
+   del código la primera vez que alguien cambie un campo y no actualice
+   el doc. Referenciá el generador y dejá acá solo la tabla de endpoints
+   + las notas conceptuales que el spec generado no captura (estados,
+   efectos secundarios, qué NO es obvio del schema).
+
+Por qué el "tipo de error" es un campo separado del código HTTP: dos
+errores con el mismo HTTP (ej. dos 400) pueden tener causas totalmente
+distintas para quien consume la API. El `type` es lo que un SDK usa para
+mapear a una clase de excepción — mal asignado, un consumidor cachea el
+`catch` equivocado.
+============================================================ -->
+
+# API — {{NOMBRE_PROYECTO}}
+
+> Contrato de error + referencia de endpoints. Los schemas completos de request/response
+> se generan de {{FUENTE_GENERADA: p.ej. "los schemas Zod / decorators de NestJS"}} — este
+> documento no los duplica.
+
+---
+
+## 1. Convenciones
+
+- **Formato:** {{JSON_U_OTRO}}.
+- **Auth:** {{MECANISMO: header, API key, bearer token}}.
+- **IDs públicos:** {{FORMATO: p.ej. prefijo + ULID}}.
+- **Naming de endpoints:** {{CASING: p.ej. kebab-case plural}}.
+- **Versionado:** {{ESTRATEGIA: header / path / ninguna todavía}}.
+
+## 2. Headers comunes
+
+| Header | Sentido |
+|---|---|
+| `{{header}}` | {{para_que}} |
+
+## 3. Paginación
+
+{{ESTRATEGIA: cursor-based recomendado sobre offset — un offset se corre cuando hay
+inserciones concurrentes; un cursor no}}.
+
+## 4. Idempotencia
+
+{{EN_QUE_OPERACIONES_ES_OBLIGATORIA: normalmente todo POST que crea un recurso con efecto
+cobrable o irreversible}} vía {{MECANISMO: p.ej. header `Idempotency-Key`}}.
+
+---
+
+## 5. Errores
+
+> El vocabulario de `type` es contrato público: cambiarlo rompe a quien ya integró. Agregar
+> un `type` nuevo es seguro; renombrar uno existente no.
+
+Formato del envelope: `{{FORMATO_DEL_ENVELOPE: p.ej. "{ error: { type, code, message,
+doc_url, request_id } }"}}`.
+
+> **Ejemplo a adaptar** — tabla real de un proyecto con contrato de error maduro. Ajustá
+> los `type` a los que el dominio realmente necesita; no todos los proyectos necesitan
+> todos estos.
+
+| `type` | HTTP | Cuándo |
+|---|---|---|
+| `validation_error` | 400 | El input no pasa validación de schema/formato |
+| `invalid_request` | 400/409/422 | Request válido pero no procesable por el estado del recurso, o precondición de negocio |
+| `authentication_error` | 401 | Credencial faltante o inválida |
+| `permission_error` | 403 | Autenticado pero sin permiso para esta acción |
+| `not_found` | 404 | Recurso ausente (o de otro tenant) |
+| `idempotency_error` | 409 | Reuso de la clave de idempotencia con un body distinto |
+| `rate_limited` | 429 | Excedió el límite de tasa |
+| `internal_error` | 500 | Falla propia (la causa real NUNCA se expone en el body) |
+| `api_error` | 503 | Dependencia externa temporalmente caída |
+
+**Reglas duras:**
+1. El `type` se asigna por **causa**, no por código HTTP — dos errores con el mismo HTTP
+   pueden tener `type` distinto.
+2. El `code` (no el `type`) determina el `doc_url` — cambiar el `type` no debe romper el
+   link a documentación.
+3. Los tests aseveran `body.error.type` (no solo el código HTTP) — una regresión de `type`
+   con el mismo HTTP pasa silenciosa si el test solo mira el status.
+
+---
+
+## 6. Endpoints
+
+> Solo la lista + notas conceptuales. El schema completo vive en {{REFERENCIA_GENERADA}}.
+
+### 6.1 {{RECURSO_1}}
+
+| Método + path | Qué hace |
+|---|---|
+| `POST /v1/{{recurso}}` | {{que_hace}} |
+| `GET /v1/{{recurso}}/:id` | {{que_hace}} |
+| `GET /v1/{{recurso}}` | Lista (paginación {{tipo}}) |
+| `PATCH /v1/{{recurso}}/:id` | {{que_hace}} |
+| `DELETE /v1/{{recurso}}/:id` | {{soft_o_hard_delete}} |
+
+**Notas conceptuales (lo que el schema generado no captura):**
+- {{EFECTO_SECUNDARIO_NO_OBVIO: p.ej. "se crea en estado `draft` y se procesa async"}}
+- {{ESTADOS_POSIBLES_DEL_RECURSO_SI_TIENE_MAQUINA_DE_ESTADOS}}
+
+### 6.2 {{RECURSO_2}}
+
+| Método + path | Qué hace |
+|---|---|
+| `{{...}}` | {{...}} |
+
+---
+
+## 7. Webhooks
+
+> Borrar si el proyecto no emite webhooks.
+
+- **Eventos:** {{CATALOGO_DE_EVENT_TYPES}}.
+- **Verificación de firma:** {{MECANISMO: HMAC + header}}.
+- **Reintentos:** {{POLITICA_DE_REINTENTO}}.
+
+## 8. Rate limits
+
+{{LIMITES_POR_ENDPOINT_O_GLOBAL}}.
+
+## 9. Sandbox / modo de prueba
+
+{{COMO_SE_PRUEBA_SIN_TOCAR_DATOS_REALES: p.ej. claves `sk_test_`, ambiente simulado}}.

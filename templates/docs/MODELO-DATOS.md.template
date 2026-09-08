@@ -1,0 +1,79 @@
+<!-- ============================================================
+INSTRUCCIONES DE USO — BORRAR ESTE BLOQUE AL LLENAR EL DOCUMENTO
+
+La sección "Convenciones" va PRIMERO, antes de cualquier tabla, y aplica
+a TODAS las tablas sin excepción. Por qué: si las convenciones se
+repitieran tabla por tabla, cada tabla nueva sería una oportunidad de
+que alguien las escriba distinto "sin querer" (otro formato de ID, otro
+tipo para el dinero). Una sección única de convenciones al inicio hace
+que agregar una tabla sea mecánico: seguís la convención, no la inventás.
+
+Al documentar una tabla que TODAVÍA NO EXISTE en el schema real: decilo
+explícitamente ("todavía no existe, se crea en la fase X") — una fila de
+este doc que describe una tabla inexistente como si ya estuviera ahí es
+exactamente el tipo de mentira que un agente (o una persona) puede
+verificar en 10 segundos contra el schema real, así que no vale la pena
+arriesgarse a que quede sin corregir.
+
+Si el ORM/schema real (Drizzle, Prisma, SQL crudo) diverge de este
+documento, ACLARÁ cuál gana (normalmente: el schema real, porque compila
+y este doc no).
+============================================================ -->
+
+# Modelo de datos — {{NOMBRE_PROYECTO}}
+
+> Schema por bounded context. Para la implementación efectiva (SSOT), ver
+> `{{RUTA_AL_SCHEMA_REAL: p.ej. packages/db/src/schema/}}`. Ante cualquier divergencia
+> entre este documento y ese schema, **gana el schema real**.
+
+---
+
+## Convenciones (aplican a TODAS las tablas)
+
+> No repitas estas reglas en cada tabla de abajo — si una tabla las rompe, la excepción se
+> anota explícitamente en la fila de esa tabla, con motivo.
+
+- **PK:** {{FORMATO_DE_PK: p.ej. "UUID interno + `public_id` prefijo+ULID" o "TEXT ULID con
+  prefijo, sin PK separada"}}.
+- **Multitenancy:** {{SI_APLICA: toda tabla tenant-scoped lleva `tenant_id` + política
+  RLS}}.
+- **Dinero:** {{TIPO_Y_LIBRERIA: p.ej. "NUMERIC(18,4) + Decimal.js. Nunca float/number"}}.
+- **Auditoría:** `created_at`, `updated_at` (trigger o `$onUpdate`), soft-delete
+  `deleted_at NULL`.
+- **Encoding / tiempos:** UTF-8, timestamps `TIMESTAMPTZ`.
+- **Ledgers (si aplica):** eventos append-only; los balances son proyecciones
+  recalculables, nunca se sobreescriben.
+- **FKs entre tablas del dominio:** {{SIMPLES_O_COMPUESTAS: si hay RLS, evaluar si una FK
+  simple puede saltar el aislamiento entre tenants — de ser así, FK compuesta
+  `(tenant_id, x_id) → (tenant_id, id)`}}.
+- **Naming:** `snake_case` plural para tablas, `snake_case` singular para columnas.
+
+---
+
+## 1. {{BOUNDED_CONTEXT_1: p.ej. "Tenancy e identidad"}}
+
+| Tabla | Campos clave | Notas |
+|---|---|---|
+| `{{tabla}}` | {{campos_clave}} | {{notas_y_decisiones_no_obvias}} |
+| `{{tabla}}` | {{campos_clave}} | {{notas}} |
+
+## 2. {{BOUNDED_CONTEXT_2}}
+
+| Tabla | Campos clave | Notas |
+|---|---|---|
+| `{{tabla}}` | {{campos_clave}} | {{notas}} |
+
+<!-- Repetir una sección por bounded context. Agrupar así (y no todas las tablas en una
+sola lista plana) es lo que permite mapear cada sección a un módulo/dominio real del
+código y a una fase del ROADMAP. -->
+
+---
+
+## Mapeo rápido (si el proyecto reconstruye/migra un dominio existente)
+
+> Borrar esta sección si no aplica. Útil cuando el proyecto reemplaza un sistema legado y
+> hay que dejar explícito qué tabla vieja se convierte en cuál nueva, y qué cambió.
+
+| Sistema anterior | Acá | Cambio clave |
+|---|---|---|
+| `{{TABLA_VIEJA}}` | `{{tabla_nueva}}` | {{QUE_MEJORO}} |

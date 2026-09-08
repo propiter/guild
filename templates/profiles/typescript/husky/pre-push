@@ -1,0 +1,34 @@
+#!/usr/bin/env sh
+# {{PROJECT_NAME}} — pre-push hook
+#
+# Gate LOCAL completo antes de que el código salga de la máquina: corre `pnpm
+# verify`, que es exactamente lo que corre CI, en el mismo orden (ver
+# templates/profiles/typescript/README.md). Tarda ~20s con caché de Turbo, ~1 min
+# en frío — CI tarda varios minutos y encima ocupa un runner. Correrlo acá antes de
+# empujar corta el ciclo "empujar → esperar a CI → enterarse de un error trivial".
+#
+# Si algo acá falla, NO uses --no-verify: arreglalo. Un push en rojo bloquea a
+# cualquier otra persona o agente trabajando sobre la misma rama.
+#
+# GUARDA CONTRA `git push --delete`: un pre-push de borrado de rama remota no trae
+# commits nuevos que verificar — todas las líneas que Git manda por stdin tienen el
+# SHA local en cero. Correr `pnpm verify` en ese caso no verifica nada real y solo
+# demora un borrado de rama. Se detecta leyendo el stdin que Git le pasa al hook:
+# cada línea es "<ref local> <sha local> <ref remoto> <sha remoto>".
+
+Z40="0000000000000000000000000000000000000000"
+hay_algo_que_verificar=0
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  if [ "$local_sha" != "$Z40" ]; then
+    hay_algo_que_verificar=1
+  fi
+done
+
+if [ "$hay_algo_que_verificar" -eq 0 ]; then
+  echo "→ pre-push: solo borrado de rama remota, no hay commits que verificar. Skip."
+  exit 0
+fi
+
+echo "▸ pnpm verify (lo mismo que CI) antes de empujar…"
+pnpm verify

@@ -1,0 +1,35 @@
+#!/usr/bin/env sh
+# {{PROJECT_NAME}} — pre-push hook (perfil Python)
+#
+# Gate LOCAL completo antes de que el código salga de la máquina: corre
+# `make verify`, que es exactamente lo que corre CI, en el mismo orden (ver
+# templates/profiles/python/README.md y el Makefile). Simétrico al pre-push
+# del perfil TypeScript (templates/profiles/typescript/husky/pre-push) —
+# mismo razonamiento, mismo mensaje, misma guarda contra `push --delete`.
+#
+# Si algo acá falla, NO uses --no-verify: arreglalo. Un push en rojo bloquea
+# a cualquier otra persona o agente trabajando sobre la misma rama.
+#
+# GUARDA CONTRA `git push --delete`: un pre-push de borrado de rama remota no
+# trae commits nuevos que verificar — todas las líneas que Git manda por
+# stdin tienen el SHA local en cero. Correr `make verify` en ese caso no
+# verifica nada real y solo demora un borrado de rama. Se detecta leyendo el
+# stdin que Git le pasa al hook: cada línea es
+# "<ref local> <sha local> <ref remoto> <sha remoto>".
+
+Z40="0000000000000000000000000000000000000000"
+hay_algo_que_verificar=0
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  if [ "$local_sha" != "$Z40" ]; then
+    hay_algo_que_verificar=1
+  fi
+done
+
+if [ "$hay_algo_que_verificar" -eq 0 ]; then
+  echo "→ pre-push: solo borrado de rama remota, no hay commits que verificar. Skip."
+  exit 0
+fi
+
+echo "▸ make verify (lo mismo que CI) antes de empujar…"
+make verify

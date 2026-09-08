@@ -1,0 +1,112 @@
+# ==============================================================================
+# {{PROJECT_NAME}} — tareas de desarrollo del perfil Python
+#
+# POR QUÉ UN MAKEFILE
+# ────────────────────
+# `pyproject.toml` no tiene un runner de tareas nativo equivalente al
+# "scripts" de package.json — ver el comentario al inicio de
+# `pyproject.toml.template`. `make` es la opción de menor fricción para
+# reemplazarlo: viene preinstalado en cualquier imagen base de CI y en
+# cualquier máquina *nix, cero dependencia nueva — la misma regla que ya
+# sigue el resto del kit (bash puro o node con `node:*`, nunca un paquete
+# extra sólo para orquestar tareas).
+#
+# EL PRINCIPIO QUE NO SE NEGOCIA (igual que en el perfil TypeScript):
+#   `make verify` tiene que correr EXACTAMENTE lo que corre el CI, en el
+#   MISMO orden. Ver el bloque comentado "PERFIL PYTHON" en
+#   templates/github/workflows/ci.yml.template.
+#
+# LO QUE ESTE MAKEFILE **NO** TIENE, Y POR QUÉ SE DICE EN VOZ ALTA:
+#   El perfil TypeScript tiene un guardrail (`check-ci-parity.mjs`) que
+#   FALLA si `verify` y `ci.yml` se desincronizan. Ese guardrail lee
+#   `package.json`; portarlo a Python (leyendo este Makefile) es la
+#   extensión natural si tu proyecto crece, pero NO viene con el kit base
+#   — no se inventa acá sin la evidencia de un guardrail real ya escrito
+#   para este perfil (ver templates/guardrails/README.md, "la regla que
+#   separa un guardrail de una ocurrencia"). Mientras no exista, la
+#   paridad `verify` ↔ CI en este perfil es DISCIPLINA, no un candado
+#   automático — decilo así, no lo escondas.
+# ==============================================================================
+
+.PHONY: lint lint-fix format typecheck test test-coverage test-integration \
+        build audit verify db-up db-down db-reset db-wait
+
+COMPOSE_DEV := docker/docker-compose.dev.yml
+DB_SERVICES := db db-test redis
+
+lint:
+	uv run ruff check .
+
+lint-fix:
+	uv run ruff check --fix .
+
+format:
+	uv run ruff format .
+
+typecheck:
+	uv run mypy src
+
+# Bucle rápido de TDD: excluye los tests marcados `integracion` (necesitan
+# Postgres/Redis reales — ver docker-up más abajo) para que este target siga
+# corriendo en milisegundos sin depender de contenedores arriba.
+test:
+	uv run pytest -m "not integracion"
+
+# El umbral de cobertura (`--cov-fail-under=85`) va ACÁ, nunca en `addopts`
+# de pytest — ver el porqué completo en templates/profiles/python/README.md
+# ("El umbral de cobertura va en el comando de build/CI, NUNCA en addopts").
+# Corre sobre el mismo subconjunto que `test` (sin `integracion`): la
+# cobertura de los tests de integración se mide en `test-integration`, no
+# acá, para no forzar a levantar contenedores sólo para ver un número de
+# cobertura del código de dominio.
+test-coverage:
+	uv run pytest --cov-fail-under=85 -m "not integracion"
+
+# Aparte de `test-coverage` porque necesita infraestructura real — mismo
+# motivo por el que `integracion` es un JOB aparte y bloqueante en
+# ci.yml.template, no un paso más de la suite unitaria: un fallo de
+# aislamiento entre tenants se tiene que ver SOLO, sin confundirse con un
+# test unitario roto. `db-up` es idempotente (ver docker/scripts/db-up.sh):
+# si ya está arriba y healthy, esto no vuelve a levantar nada.
+test-integration: db-up
+	uv run pytest -m integracion
+
+build:
+	uv build --wheel
+
+# Sin equivalente evidenciado en la fuente de este perfil (ver
+# templates/profiles/README.md, fila "Auditoría de dependencias"). Sale en
+# rojo a propósito: un target de auditoría que siempre dice "todo bien" sin
+# haber comprobado nada es peor que no tenerlo. Si lo necesitás: `pip-audit`
+# o `uv pip audit` — agregalo acá y sacá este `exit 1`.
+audit:
+	@echo "audit: sin comando evidenciado para este perfil — agregalo antes de usarlo." >&2
+	@exit 1
+
+# Orden idéntico al que correría el bloque comentado "PERFIL PYTHON" de
+# ci.yml.template: lint → typecheck → test con cobertura → build → tests de
+# integración contra infraestructura real. `audit` queda AFUERA de esta
+# cadena a propósito: encadenar un target que siempre sale 1 (ver arriba)
+# rompería `verify` para todo el mundo, no sólo para quien lo necesita —
+# agregalo a la cadena el mismo día que le pongas un comando real.
+verify: lint typecheck test-coverage build test-integration
+
+# ── docker/ — ver templates/docker/README.md para el porqué completo ───────
+db-up:
+	bash docker/scripts/db-up.sh $(COMPOSE_DEV) $(DB_SERVICES)
+
+db-down:
+	docker compose -f $(COMPOSE_DEV) down
+
+db-reset:
+	bash docker/scripts/db-reset.sh $(COMPOSE_DEV) $(DB_SERVICES)
+
+db-wait:
+	bash docker/scripts/wait-for-healthy.sh $(COMPOSE_DEV) $(DB_SERVICES)
+
+# Aplica las migraciones pendientes. El comando concreto lo define la herramienta de
+# migraciones elegida en la fase 2 (Alembic, yoyo, sqlx, la que sea).
+# El CI lo invoca en el job de integración: si no está definido, el job falla.
+db-migrate:
+	{{COMANDO_DE_MIGRACION}}
+

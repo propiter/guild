@@ -1,0 +1,124 @@
+# ==============================================================================
+# Dependabot — agrupado por ACOPLAMIENTO, no por "todo junto".
+#
+# Filosofía (con decenas de pull requests de rodaje en producción):
+#   - Deps ACOPLADAS (lockstep, se rompen si se mueven por separado) → mismo
+#     grupo, MISMO PR, con TODAS las update-types incluido major.
+#   - minor/patch de RUNTIME → grupo con REVIEW humano (tocan el dominio).
+#   - minor/patch de TOOLING (no-runtime) → grupo con AUTO-MERGE cuando CI pasa.
+#   - majors sueltos (fuera de un grupo lockstep) → PR INDIVIDUAL por dep
+#     (cada major es una migración deliberada; agruparlos produce un PR
+#     eternamente rojo, imposible de revisar y de mergear).
+#   - security → siempre separado y prioritario.
+#
+# El ORDEN de los grupos importa: un dep entra al PRIMER grupo cuyo patrón
+# matchea. Los específicos (acoplados) van primero; el catch-all (runtime) va
+# al final. Invertir el orden hace que el catch-all se trague los acoplados.
+#
+# Completá {{LOCKSTEP_GROUPS}}, {{DEV_TOOLING_PACKAGES}} y
+# {{RUNTIME_EXCLUDE_PATTERNS}} con lo que aplique al proyecto. El auto-merge
+# de `dev-tooling` vive en un workflow aparte (`dependabot-auto-merge.yml` —
+# no incluido en este kit por defecto porque su condición de seguridad
+# depende de qué CI checks existan; adaptalo a mano si lo necesitás).
+# ==============================================================================
+
+version: 2
+updates:
+  # ───────────────────────────────────────────────────────────────────────────
+  # {{ECOSYSTEM_NAME}} (ej. npm, pip)
+  # ───────────────────────────────────────────────────────────────────────────
+  - package-ecosystem: "{{ECOSYSTEM}}"
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "{{TIMEZONE}}"
+    open-pull-requests-limit: 6
+    versioning-strategy: increase
+    commit-message:
+      prefix: "chore(deps)"
+      include: scope
+    labels:
+      - dependencies
+    groups:
+      # ── ACOPLADAS (lockstep, TODAS las update-types incl. major) ───────────
+      # Ejemplo: paquetes que vendorizan tipos entre sí, o que declaran peers
+      # dirigidos (A depende de una versión exacta de B, pero B no declara
+      # nada sobre A — ejemplo real: paquetes tipo @nestjs/* donde si "common"
+      # se mueve solo, nadie se queja hasta que revienta en runtime).
+      # {{LOCKSTEP_GROUP_NAME}}:
+      #   applies-to: version-updates
+      #   patterns:
+      #     - "{{LOCKSTEP_PACKAGE_1}}"
+      #     - "{{LOCKSTEP_PACKAGE_2}}"
+
+      # ── TOOLING no-runtime (minor/patch) → AUTO-MERGE ──────────────────────
+      # No tocan el dominio; si CI pasa, se pueden mergear solos. Sus MAJORS
+      # caen a PR individual (migraciones, no auto-merge).
+      dev-tooling:
+        applies-to: version-updates
+        patterns: {{DEV_TOOLING_PACKAGES}}
+        update-types:
+          - minor
+          - patch
+
+      # ── RESTO runtime (minor/patch) → REVIEW humano ────────────────────────
+      # NO lleva `patterns` a propósito: es catch-all (todo lo NO excluido).
+      # No agregar `patterns: ["*"]` — cambiaría la precedencia y se tragaría
+      # los grupos de arriba.
+      runtime:
+        applies-to: version-updates
+        exclude-patterns: {{RUNTIME_EXCLUDE_PATTERNS}}
+        update-types:
+          - minor
+          - patch
+
+      # ── Security: siempre aparte y prioritario ─────────────────────────────
+      security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # GitHub Actions — un solo PR semanal con todos los bumps (review)
+  # ───────────────────────────────────────────────────────────────────────────
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "{{TIMEZONE}}"
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "chore(ci)"
+    labels:
+      - dependencies
+      - github-actions
+    groups:
+      actions-all:
+        patterns:
+          - "*"
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Docker base images
+  # ───────────────────────────────────────────────────────────────────────────
+  - package-ecosystem: docker
+    directories:
+      - "{{DOCKER_DIRECTORY}}"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "{{TIMEZONE}}"
+    open-pull-requests-limit: 1
+    commit-message:
+      prefix: "chore(docker)"
+    labels:
+      - dependencies
+      - docker
+    groups:
+      docker-base:
+        patterns:
+          - "*"

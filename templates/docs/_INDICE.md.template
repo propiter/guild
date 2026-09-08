@@ -1,0 +1,89 @@
+<!-- ============================================================
+INSTRUCCIONES DE USO — BORRAR ESTE BLOQUE AL LLENAR EL DOCUMENTO
+
+Este archivo va a `docs/README.md` del proyecto (quitá el prefijo `_` y el
+sufijo `.template`). Es el ÍNDICE de la documentación: no explica el
+proyecto, explica DÓNDE está cada explicación.
+
+Por qué existe: sin un índice con estado, alguien nuevo (humano o agente)
+tiene que abrir los 12 archivos de `docs/` para saber cuáles están
+completos y cuáles son un esqueleto vacío. El estado (✅/🚧/⬜) es lo que
+evita perder tiempo leyendo un doc a medio llenar como si fuera verdad
+asentada.
+
+Reglas para llenarlo:
+- Actualizá la columna Estado cada vez que un doc pasa de fase.
+- La sección "Decisiones fundacionales" son las 3-6 decisiones que, si
+  cambiaran, obligarían a rehacer gran parte del proyecto. No es una lista
+  de todas las decisiones — para eso está STACK.md (ADRs) y ROADMAP.md.
+- "Cómo trabajamos" describe el método (docs-first / SDD / sesiones), no
+  el producto. Ajustalo a como el equipo realmente trabaja, no a un ideal.
+============================================================ -->
+
+# {{NOMBRE_PROYECTO}} — Documentación del proyecto
+
+> **{{NOMBRE_PROYECTO}}** — {{DESCRIPCION_UNA_LINEA}}.
+>
+> {{CONTEXTO_ADICIONAL_BREVE: p.ej. marca, dominio, mercado}}
+
+---
+
+## Qué es esto
+
+{{PARRAFO_QUE_ES_EL_PROYECTO: 2-4 líneas. Qué se construye y con qué filosofía de trabajo.}}
+
+## Índice de documentos
+
+| Documento | Contenido | Estado |
+|---|---|---|
+| [BLUEPRINT.md](./BLUEPRINT.md) | Charter: visión, para quién, decisiones fundacionales, plan por fases | {{✅\|🚧\|⬜}} |
+| [PRD.md](./PRD.md) | Requisitos de producto, personas, casos de uso, RF/RNF | {{✅\|🚧\|⬜}} |
+| [ARQUITECTURA.md](./ARQUITECTURA.md) | Cómo están armadas las piezas y por qué | {{✅\|🚧\|⬜}} |
+| [STACK.md](./STACK.md) | Decisiones de stack justificadas (ADRs) | {{✅\|🚧\|⬜}} |
+| [MODELO-DATOS.md](./MODELO-DATOS.md) | Schema por bounded context, convenciones de datos | {{✅\|🚧\|⬜}} |
+| [SEGURIDAD.md](./SEGURIDAD.md) | Aislamiento, secretos, RBAC, auditoría | {{✅\|🚧\|⬜}} |
+| [INFRAESTRUCTURA.md](./INFRAESTRUCTURA.md) | CI, runners, registry, deploy. Se consulta al tocar infra, no se lee de entrada | {{✅\|🚧\|⬜}} |
+| [ROADMAP.md](./ROADMAP.md) | Plan por fases, hitos, deuda técnica registrada | {{✅\|🚧\|⬜}} |
+| [API.md](./API.md) | Contrato de error + referencia de endpoints | {{✅\|🚧\|⬜}} |
+| [STANDARDS.md](./STANDARDS.md) | Estándares de ingeniería: molde de recurso, DoD | {{✅\|🚧\|⬜}} |
+| [GLOSARIO.md](./GLOSARIO.md) | Términos del dominio | {{✅\|🚧\|⬜}} |
+| [AGENT-ONBOARDING.md](./AGENT-ONBOARDING.md) | Prompt de arranque de sesión para un agente | {{✅\|🚧\|⬜}} |
+| `{{OTROS_DOCS_ESPECIFICOS_DEL_PROYECTO}}` | {{...}} | {{...}} |
+
+> Estado: ✅ completo y vigente · 🚧 en construcción, usar con cautela · ⬜ todavía no existe.
+
+## Cómo trabajamos (organización del proyecto)
+
+**{{METODO: p.ej. "Híbrido docs-first + SDD + sesiones"}}**:
+
+1. **Docs-first** — este `docs/` es la fuente de verdad de visión, arquitectura y plan. Se
+   actualiza **antes** de construir.
+2. **SDD (Spec-Driven Development)** — cada capability grande se construye como un ciclo:
+   `propuesta → spec → diseño → tareas → apply → verify → archive`. No todo cambio necesita
+   SDD: se reserva para módulos con impacto real en arquitectura o dominio.
+3. **Sesiones de trabajo** — cada sesión deja memoria persistente y continuidad garantizada
+   para la siguiente.
+
+**Convenciones (resumen — detalle en `STANDARDS.md`):** {{CONVENCIONES_CLAVE: tipado
+estricto, cómo se representa el dinero, formato de IDs, casing de DB, formato de commits,
+tamaño máximo de PR, tests obligatorios}}.
+
+## Estado actual
+
+{{ESTADO_ACTUAL_EN_UNA_LINEA: p.ej. "🟢 Fase de planeación completa. Próximo: arrancar F0."}}
+
+## Decisiones fundacionales (locked)
+
+> Solo las decisiones que, si se revirtieran, obligan a rehacer una parte grande del
+> proyecto. El detalle completo y el resto de las decisiones van en `STACK.md` (ADRs).
+
+1. {{DECISION_1_Y_POR_QUE_ES_IRREVERSIBLE}}
+2. {{DECISION_2}}
+3. {{DECISION_3}}
+
+## Decisiones pendientes del owner
+
+> Lo que bloquea (o no) el avance. Sé explícito sobre cuál bloquea qué, para que nadie
+> asuma que "pendiente" significa "podemos esperar sin costo".
+
+- {{DECISION_PENDIENTE_1}} — {{BLOQUEA_QUE / NO_BLOQUEA_NADA_TODAVIA}}

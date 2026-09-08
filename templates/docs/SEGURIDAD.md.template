@@ -1,0 +1,86 @@
+<!-- ============================================================
+INSTRUCCIONES DE USO — BORRAR ESTE BLOQUE AL LLENAR EL DOCUMENTO
+
+SEGURIDAD.md es donde vive TODO lo que responde "¿cómo protegemos esto?"
+— si estás por escribir una regla de seguridad en ARQUITECTURA.md o en
+STANDARDS.md, referenciá acá en vez de duplicarla: la frontera de
+confianza es el lugar del proyecto donde una duplicación desactualizada
+es más cara (una regla de RLS que cambió acá pero no allá es un hueco de
+aislamiento silencioso).
+
+Por qué cada sección existe:
+- Aislamiento multitenant: si el proyecto es multitenant, esta es la
+  sección que un agente debe leer ANTES de tocar cualquier query — un
+  error acá es indistinguible de una fuga de datos entre clientes.
+- Custodia de secretos: nombra EXACTAMENTE dónde vive cada secreto y qué
+  NUNCA debe pasar (ej. "nunca en logs", "nunca en disco plano").
+- Auditoría: qué queda registrado y por qué append-only (si algo se
+  puede editar o borrar, no es auditoría, es una nota).
+- Cumplimiento: qué norma aplica y qué exige — sin esto, "cumplimiento"
+  es una palabra sin contenido verificable.
+============================================================ -->
+
+# Seguridad — {{NOMBRE_PROYECTO}}
+
+> Modelo de seguridad{{SI_MULTITENANT: " multitenant"}}, custodia de secretos, control de
+> acceso, auditoría y cumplimiento. Coherente con `ARQUITECTURA.md` y `STANDARDS.md`.
+
+---
+
+## 1. Aislamiento multitenant
+
+> Borrar si el proyecto no es multitenant.
+
+- {{MECANISMO_DE_AISLAMIENTO: p.ej. "Row-Level Security en toda tabla tenant-scoped"}}.
+- Rol de runtime {{SIN_BYPASS}}; rol de owner/migraciones separado y nunca en runtime.
+- {{EXCEPCIONES_EXPLICITAS_SI_EXISTEN: p.ej. un rol de soporte que atraviesa tenants a
+  propósito — documentar CÓMO se audita esa excepción, nunca dejarla implícita}}.
+
+## 2. Autenticación
+
+- {{MECANISMO: p.ej. API keys propias / OAuth / sesiones + tokens}}.
+- {{ROTACION_Y_REVOCACION}}.
+
+## 3. Autorización (RBAC/ABAC)
+
+- {{MODELO_DE_ROLES_Y_PERMISOS}}.
+- {{CATALOGO_DE_PERMISOS: dónde vive — código o tabla, y por qué}}.
+
+## 4. Custodia de secretos
+
+> La sección más sensible del documento: sé literal, no genérico.
+
+- {{DONDE_VIVEN_LOS_SECRETOS: p.ej. bóveda / KMS / vault, nunca en la base ni en el repo}}.
+- **Reglas duras:** nunca en logs · nunca en disco plano · nunca en variables de entorno
+  sin cifrar en el proveedor de infra.
+
+## 5. Integridad de datos (anti-fraude / anti-corrupción)
+
+- {{INVARIANTES_EN_LA_BASE: FKs, constraints, checks — no solo en la aplicación}}.
+- {{LEDGERS_INMUTABLES_SI_APLICA}}.
+
+## 6. Auditoría
+
+- {{QUE_QUEDA_REGISTRADO}}: append-only, {{POR_QUE_APPEND_ONLY}}.
+- {{QUIEN_PUEDE_LEER_LA_AUDITORIA}}.
+
+## 7. Transporte y red
+
+- {{TLS_HTTPS_Y_DETALLES}}.
+
+## 8. Cumplimiento
+
+> Borrar si no hay marco regulatorio. Si lo hay, nombrarlo explícitamente.
+
+- {{NORMA_1}}: {{QUE_EXIGE_Y_COMO_SE_CUMPLE}}.
+
+## 9. Operación segura
+
+- {{HEADERS_DE_SEGURIDAD_SI_APLICA}}.
+- {{VALIDACION_DE_ENTRADA}}.
+- {{GESTION_DE_VULNERABILIDADES: dependabot/similar + SLA de parcheo}}.
+
+## 10. Respuesta a incidentes
+
+- {{QUE_PASA_SI_HAY_UN_INCIDENTE: quién se entera primero, qué se congela, qué se
+  comunica y a quién}}.

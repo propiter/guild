@@ -1,0 +1,171 @@
+// OJO CON LA EXTENSIÓN: `.jsonc`, no `.json`.
+//
+// Biome acepta comentarios en `biome.jsonc`. En `biome.json` NO los acepta — y no
+// avisa: un solo comentario suelto hace que Biome descarte el archivo entero EN
+// SILENCIO y corra con su configuración por defecto. Medido en producción: con un
+// comentario de más en el archivo equivocado, Biome pasó de revisar 90 archivos a
+// 351 (entró a `dist/`, `coverage/`, `storybook-static/`), con tabulaciones y 80
+// columnas en vez de espacios y 100. Si tu editor o tooling insiste en `.json`,
+// perdés todo lo que este archivo documenta sin un solo error en pantalla.
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.8/schema.json",
+
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  },
+
+  "files": {
+    // El nombre de carpeta PELADO, sin barra final ni patrón `**/`. Las tres formas
+    // NO son equivalentes y dos de ellas están mal, medido corriendo `biome ci .`:
+    //   "!**/dist/**"  → excluye, pero Biome se queja (recorre la carpeta entera y
+    //                    descarta archivo por archivo: más lento, y ruidoso).
+    //   "!**/dist/"    → NO excluye nada y encima silencia la advertencia — parece
+    //                    correcto y no lo es.
+    //   "!**/dist"     → excluye, sin aviso. Esta es la forma correcta.
+    "includes": [
+      "**",
+      "!**/node_modules",
+      "!**/dist",
+      "!**/coverage",
+      "!**/.turbo"
+    ]
+  },
+
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+
+      "suspicious": {
+        // Un `any` explícito apaga el chequeo de tipos exactamente donde más hace
+        // falta: en los bordes (parseo de I/O externo, respuestas de terceros). Si
+        // hace falta escapar el sistema de tipos, `unknown` + un type guard deja
+        // rastro de la validación; `any` no deja rastro de nada.
+        "noExplicitAny": "error",
+
+        // Bloquea la consola ENTERA (no solo `console.log`; Biome 1 tenía
+        // `noConsoleLog`, que dejaba pasar `console.warn`/`console.error`/etc — Biome
+        // 2 la reemplazó por esta, más estricta). Código de librería o de servicio
+        // que escribe en la consola de un proceso ajeno (el navegador de otro
+        // usuario, el stdout de un servicio en producción) tiene un bug, no un log.
+        // Las herramientas de línea de comandos (scripts/**) llevan su propio
+        // override más abajo: ahí la salida por consola ES el producto.
+        "noConsole": "error"
+      },
+
+      "style": {
+        "useImportType": "error",
+
+        // `variable!` le miente al compilador ("esto nunca es null/undefined") sin
+        // ninguna prueba en runtime. En código de producción es una promesa que se
+        // rompe en silencio el día que la premisa deja de ser cierta. Desactivada en
+        // tests (override más abajo): construir fixtures a veces exige afirmar un
+        // valor que el test mismo garantiza por construcción, y ahí el costo de la
+        // regla supera el beneficio.
+        "noNonNullAssertion": "error"
+      },
+
+      "correctness": {
+        "noUnusedImports": "error",
+        "noUnusedVariables": "error"
+      }
+    }
+  },
+
+  "overrides": [
+    {
+      // Tests: se permite `!` sobre valores que el propio test garantiza por
+      // construcción (fixtures, resultados de setup). Fuera de tests, `noNonNullAssertion`
+      // sigue en "error".
+      "includes": ["**/*.test.ts", "**/*.test.tsx", "**/__tests__/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noNonNullAssertion": "off"
+          }
+        }
+      }
+    },
+    {
+      // Scripts de línea de comandos: su salida por consola ES el producto (avisan en
+      // texto qué se rompió y cómo arreglarlo). Prohibirles la consola los dejaría
+      // mudos, que es lo contrario de lo que hacen.
+      "includes": ["scripts/**", "**/scripts/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsole": "off"
+          }
+        }
+      }
+    },
+    {
+      // Si tu app usa un framework con decoradores de constructor para inyección de
+      // dependencias (NestJS y similares): `useImportType` puede romper la inyección
+      // EN RUNTIME sin que la compilación se entere. Biome ve una clase importada
+      // solo para tipar el parámetro del constructor y sugiere `import type` — con
+      // `import type`, el bundler elide el binding de VALOR, la metadata de
+      // decoradores sigue emitiéndose igual pero apuntando a un símbolo que ya no
+      // existe en el módulo, y el framework de DI falla al arrancar con una excepción
+      // que sí nombra la causa (buscá "import type" en el mensaje de tu framework).
+      // `tsc --noEmit` da EXIT 0 y el build sale "Build success": el defecto es
+      // invisible hasta que el proceso intenta levantar.
+      // Ajustá el include al path real de tu capa con inyección de dependencias.
+      "includes": ["{{DI_LAYER_PATH}}/**"],
+      "javascript": {
+        "parser": {
+          // Necesario si usás decoradores sobre PARÁMETROS (`@Res()`, `@Body()` y
+          // similares en NestJS) — TC39 todavía no estandarizó esa posición de
+          // decorador (a diferencia de los de clase/método), y sin esta opción Biome
+          // rechaza el archivo entero.
+          "unsafeParameterDecoratorsEnabled": true
+        }
+      },
+      "linter": {
+        "rules": {
+          "style": {
+            "useImportType": "off"
+          }
+        }
+      }
+    }
+  ],
+
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100,
+    "lineEnding": "lf"
+  },
+
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single",
+      "trailingCommas": "all",
+      "semicolons": "always",
+      "arrowParentheses": "always"
+    }
+  },
+
+  "json": {
+    "formatter": {
+      "indentWidth": 2,
+      "trailingCommas": "none"
+    }
+  },
+
+  "css": {
+    "parser": {
+      // Solo si tu proyecto usa Tailwind: sin esto, Biome no entiende `@theme`,
+      // `@utility` ni `@apply`, y el archivo que define el design system falla al
+      // parsear con "Tailwind-specific syntax is disabled". Si no usás Tailwind,
+      // borrá este bloque entero.
+      "tailwindDirectives": true
+    }
+  }
+}

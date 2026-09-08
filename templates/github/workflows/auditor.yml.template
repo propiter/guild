@@ -1,0 +1,417 @@
+# ==============================================================================
+# El Auditor — review automático de PRs con veredicto y auto-merge inteligente.
+#
+# Cómo funciona:
+#   1. Espera a que CI pase (si CI falla, no gasta tokens revisando algo que
+#      ni siquiera compila).
+#   2. Lee el diff del PR + la conversación previa (para no repetirse ni
+#      entrar en loop).
+#   3. Le pide al modelo un review estructurado terminado en VEREDICTO.
+#   4. Postea el review como comentario y etiqueta el PR.
+#   5. VEREDICTO=APRUEBO + paths no críticos + diff chico → auto-merge squash
+#      VEREDICTO=BLOQUEO                                  → label bloqueado
+#      VEREDICTO=NECESITA_HUMANO                           → sólo comenta
+#
+# LAS CUATRO DEFENSAS QUE ESTE WORKFLOW NO PUEDE PERDER AL ADAPTARLO
+# ────────────────────────────────────────────────────────────────────
+# 1. ANTI-LOOP: 3+ rondas seguidas bloqueando lo mismo escala a
+#    NECESITA_HUMANO por regla DURA del workflow, no delegada al modelo. Un
+#    debate técnico entre el bot y el autor del PR no se resuelve solo con más
+#    rondas.
+# 2. 429 ≠ 5xx: un "sin cuota" (429) y un "gateway caído" (5xx) son fallas
+#    DISTINTAS y necesitan backoff DISTINTO. Tratarlas igual produjo un rojo
+#    en la lista de checks del PR indistinguible de un VEREDICTO: BLOQUEO —
+#    y SÍ costó una lectura equivocada la primera vez que pasó. Ver
+#    `templates/guardrails/check-auditor-reintento.mjs` (el guardrail que
+#    prueba este mismo bucle con curl stubeado).
+# 3. PATHS CRÍTICOS: ciertos directorios/archivos requieren ojo humano SIEMPRE,
+#    diga lo que diga el modelo — auth, secretos, RLS/multi-tenant, workflows
+#    (pueden desactivar sus propios gates), certificados.
+# 4. AUTO-MERGE CONDICIONADO: sólo si APRUEBO + sin paths críticos + diff por
+#    debajo de un umbral de líneas. Un aprobado sobre un diff enorme sigue
+#    necesitando ojo humano — el modelo puede aprobar con confianza un cambio
+#    demasiado grande para revisar bien en un solo pase.
+#
+# Placeholders `{{...}}`:
+#   {{CI_CHECK_NAME}}         nombre EXACTO del job de CI que hay que esperar
+#                             (tiene que matchear `name:` en ci.yml, char por char)
+#   {{OPENAI_BASE_URL_DEFAULT}}  endpoint del gateway (o de OpenAI directo)
+#   {{AUDITOR_MODEL_DEFAULT}}    modelo por defecto
+#   {{CRITICAL_PATHS_REGEX}}     regex de paths que siempre requieren humano
+#   {{MAX_LINES_AUTOMERGE}}      líneas de diff por encima de las cuales no hay auto-merge
+#   {{CI_RUNNER_VAR}}
+# ==============================================================================
+
+name: El Auditor
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  issue_comment:
+    types: [created]
+    # GitHub trata issues y PRs con el mismo endpoint de comentarios; el guard
+    # `github.event.issue.pull_request != null` (más abajo) filtra los issues
+    # reales.
+
+permissions:
+  contents: write # auto-merge requiere write
+  pull-requests: write # comentarios + labels + merge
+  checks: read
+
+# Anti-race entre rondas concurrentes del mismo PR. Entre PUSHES gana el
+# último: revisar un commit ya superado no sirve de nada. Un COMENTARIO NUNCA
+# cancela una revisión en curso — si cancelara, un comentario respondiendo a
+# la ronda anterior mataría la revisión del commit más importante del PR y el
+# check quedaría en rojo por "operación cancelada", que no se parece en nada
+# a la causa real.
+concurrency:
+  group: el-auditor-pr-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: ${{ github.event_name != 'issue_comment' }}
+
+jobs:
+  review:
+    name: Revisión del PR
+    runs-on: ${{ vars.{{CI_RUNNER_VAR}} || 'ubuntu-24.04' }}
+    timeout-minutes: 20
+    # Seguridad en profundidad:
+    #   - Excluye a dependabot (tiene su propio workflow de auto-merge, ver
+    #     dependabot.yml.template)
+    #   - Rama A (pull_request): sólo PRs internos y no-draft
+    #   - Rama B (issue_comment): sólo PRs, palabra clave explícita
+    #     (`[re-audit]`), autor humano con push access
+    if: |
+      github.actor != 'dependabot[bot]'
+      && (
+        (github.event_name == 'pull_request' && github.event.pull_request.draft == false)
+        || (
+          github.event_name == 'issue_comment'
+          && github.event.issue.pull_request != null
+          && contains(github.event.comment.body, '[re-audit]')
+          && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
+        )
+      )
+    steps:
+      - name: Resolver PR (número, SHAs, autor)
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            NUMBER="${{ github.event.pull_request.number }}"
+          else
+            NUMBER="${{ github.event.issue.number }}"
+          fi
+          PR_JSON=$(gh pr view "$NUMBER" --json headRefOid,baseRefOid,title,author,url)
+          {
+            echo "number=$NUMBER"
+            echo "head_sha=$(echo "$PR_JSON" | jq -r .headRefOid)"
+            echo "base_sha=$(echo "$PR_JSON" | jq -r .baseRefOid)"
+            echo "title=$(echo "$PR_JSON" | jq -r .title)"
+            echo "author=$(echo "$PR_JSON" | jq -r .author.login)"
+            echo "url=$(echo "$PR_JSON" | jq -r .url)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Esperar a que CI termine
+        # Si CI falla, este step falla y el resto del job se saltea: no tiene
+        # sentido auditar código que ni siquiera compila, y no gasta tokens.
+        uses: lewagon/wait-on-check-action@v1.9.1
+        with:
+          ref: ${{ steps.pr.outputs.head_sha }}
+          # Debe coincidir EXACTAMENTE con el `name:` del job en ci.yml.
+          check-name: "{{CI_CHECK_NAME}}"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 10
+          allowed-conclusions: success
+
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # CRÍTICO: con el trigger issue_comment el default sería main, no
+          # el código del PR.
+          ref: ${{ steps.pr.outputs.head_sha }}
+          fetch-depth: 0
+
+      - name: Verificar que exista OPENAI_API_KEY
+        id: check
+        env:
+          KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "OPENAI_API_KEY no configurado — se omite el review."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ── PATHS CRÍTICOS + tamaño del diff ────────────────────────────────────
+      - name: Detectar paths críticos y tamaño del diff
+        if: steps.check.outputs.skip == 'false'
+        id: paths
+        env:
+          BASE: ${{ steps.pr.outputs.base_sha }}
+          HEAD: ${{ steps.pr.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          CHANGED=$(git diff --name-only "$BASE" "$HEAD")
+          echo "Archivos modificados:"; echo "$CHANGED"
+
+          # Distinguí INTRODUCIR de MENCIONAR: un secreto/certificado sólo
+          # cuenta como crítico si fue agregado o modificado, no si su ruta
+          # aparece como texto dentro de un .md que se está editando.
+          ADDED_OR_MODIFIED_SENSITIVE=$(git diff --name-only --diff-filter=AM "$BASE" "$HEAD" \
+            | grep -iE '\.(p12|pem|key|pfx|jks|crt|cer)$' || true)
+
+          # Personalizá {{CRITICAL_PATHS_REGEX}} con los directorios propios
+          # del proyecto: multi-tenant/RLS, auth, secretos, tokens de diseño
+          # (cambian TODA la UI de un solo golpe), workflows (pueden
+          # desactivar sus propios gates).
+          CRITICAL_DIRS=$(echo "$CHANGED" | grep -E '{{CRITICAL_PATHS_REGEX}}' || true)
+
+          CRITICAL=$(printf '%s\n%s' "$ADDED_OR_MODIFIED_SENSITIVE" "$CRITICAL_DIRS" | grep -v '^$' || true)
+
+          LINES=$(git diff --numstat "$BASE" "$HEAD" | awk '$1 ~ /^[0-9]+$/ && $2 ~ /^[0-9]+$/ {sum += $1 + $2} END {print sum+0}')
+          LINES=${LINES:-0}
+          echo "Líneas cambiadas: $LINES"
+
+          if [ -n "$CRITICAL" ]; then
+            echo "🚧 Toca paths críticos:"; echo "$CRITICAL"
+            echo "critical=true" >> "$GITHUB_OUTPUT"
+          elif [ "$LINES" -gt {{MAX_LINES_AUTOMERGE}} ]; then
+            echo "🚧 Diff grande (>{{MAX_LINES_AUTOMERGE}} líneas) — requiere humano"
+            echo "critical=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "✅ Diff apto para auto-merge si El Auditor aprueba"
+            echo "critical=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Construir el payload del diff
+        if: steps.check.outputs.skip == 'false'
+        id: diff
+        env:
+          BASE: ${{ steps.pr.outputs.base_sha }}
+          HEAD: ${{ steps.pr.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          # -U10 en vez del contexto por defecto de 3 líneas: un cambio y su
+          # efecto (ej. dónde se escribe una variable) pueden quedar a más de
+          # 3 líneas de distancia, y el modelo concluye "falta" cuando
+          # simplemente no cambió nada ahí.
+          #
+          # Cap de tamaño + marcador explícito si se trunca, para que el
+          # modelo sepa que ve un diff parcial y no afirme ausencias.
+          DIFF_CAP=200000
+          TMP_DIFF_FULL=$(mktemp "${RUNNER_TEMP}/pr-diff-full.XXXXXX")
+          trap 'rm -f "$TMP_DIFF_FULL"' EXIT
+
+          git diff -U10 "$BASE" "$HEAD" -- \
+            ':(exclude)*.lock' \
+            ':(exclude)*.snap' \
+            > "$TMP_DIFF_FULL"
+
+          DIFF_FULL_SIZE=$(wc -c < "$TMP_DIFF_FULL")
+          if [ "$DIFF_FULL_SIZE" -gt "$DIFF_CAP" ]; then
+            head -c "$DIFF_CAP" "$TMP_DIFF_FULL" > "${RUNNER_TEMP}/pr.diff"
+            echo -e "\n\n[... DIFF TRUNCADO a ${DIFF_CAP} bytes de ${DIFF_FULL_SIZE} — no asumas que lo que sigue no cambió ...]" >> "${RUNNER_TEMP}/pr.diff"
+          else
+            cp "$TMP_DIFF_FULL" "${RUNNER_TEMP}/pr.diff"
+          fi
+
+          if [ ! -s "${RUNNER_TEMP}/pr.diff" ]; then
+            echo "Diff vacío (sólo archivos excluidos) — se omite el review."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "Tamaño del diff: $(wc -c < "${RUNNER_TEMP}/pr.diff") bytes (crudo: ${DIFF_FULL_SIZE}B)"
+
+      # ── ANTI-LOOP: conversación previa + regla dura de escalado ────────────
+      - name: Traer la conversación previa (contexto anti-loop)
+        if: steps.check.outputs.skip == 'false' && steps.diff.outputs.skip == 'false'
+        id: history
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          AUTHOR_LOGIN: ${{ steps.pr.outputs.author }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # Tres fuentes en orden cronológico: comentarios del PR, reviews
+          # formales, comentarios inline. Filtrado a lo relevante: el propio
+          # bot (su memoria), el autor (sus refutaciones), y cualquier
+          # colaborador con push access.
+          ISSUE=$(gh api --paginate "repos/$REPO/issues/$PR_NUMBER/comments" 2>/dev/null \
+            --jq '[.[] | {who: .user.login, kind: "issue_comment", at: .created_at, body: .body, is_bot: (.user.type == "Bot"), is_author: (.user.login == env.AUTHOR_LOGIN), can_audit: (.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR")}]' || echo '[]')
+          REVIEWS=$(gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/reviews" 2>/dev/null \
+            --jq '[.[] | select(.body != "" and .body != null) | {who: .user.login, kind: ("review:" + .state), at: .submitted_at, body: .body, is_bot: (.user.type == "Bot"), is_author: (.user.login == env.AUTHOR_LOGIN), can_audit: (.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR")}]' || echo '[]')
+          REVIEW_C=$(gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/comments" 2>/dev/null \
+            --jq '[.[] | {who: .user.login, kind: "review_comment", at: .created_at, body: .body, is_bot: (.user.type == "Bot"), is_author: (.user.login == env.AUTHOR_LOGIN), can_audit: (.author_association == "OWNER" or .author_association == "MEMBER" or .author_association == "COLLABORATOR")}]' || echo '[]')
+
+          ALL=$(jq -n --argjson a "$ISSUE" --argjson b "$REVIEWS" --argjson c "$REVIEW_C" \
+            '($a + $b + $c) | map(select(.is_bot == true or .is_author == true or .can_audit == true)) | sort_by(.at)')
+
+          # REGLA DURA, NO DELEGADA AL MODELO: 3+ rondas bloqueando lo mismo
+          # es un debate técnico atascado, no algo que una ronda más resuelva.
+          BLOCK_ROUNDS=$(printf '%s' "$ALL" | jq '[.[] | select(.is_bot == true) | select(.body | contains("VEREDICTO: BLOQUEO"))] | length')
+          ALL_ROUNDS=$(printf '%s' "$ALL" | jq '[.[] | select(.is_bot == true)] | length')
+          echo "Rondas previas con BLOQUEO: $BLOCK_ROUNDS (de $ALL_ROUNDS comentarios del bot)"
+
+          if [ "$BLOCK_ROUNDS" -ge 3 ]; then
+            echo "force_verdict=NECESITA_HUMANO" >> "$GITHUB_OUTPUT"
+            echo "::warning::Auditor en loop ($BLOCK_ROUNDS rondas con BLOQUEO). Escalado forzado a NECESITA_HUMANO."
+          else
+            echo "force_verdict=" >> "$GITHUB_OUTPUT"
+          fi
+
+          # Sanitización: cap por mensaje, escape de triple-backtick
+          # (anti prompt-injection liviano), solo los últimos 6 mensajes.
+          TRAIL=$(printf '%s' "$ALL" | jq -r '
+            if (. // [] | length) == 0 then ""
+            else
+              ([.[]] | .[-6:] | map(
+                .body as $b | (if ($b | length) > 3000 then ($b[:3000] + "\n…[truncado]") else $b end) as $body
+                | "### \(.who) (\(.kind), \(.at))\n\($body)"
+              ) | join("\n\n---\n\n"))
+            end')
+          [ -z "$TRAIL" ] && TRAIL="(Sin reviews previos — esta es la primera ronda del PR.)"
+          printf '%s' "$TRAIL" > "${RUNNER_TEMP}/history.md"
+
+      # ── Llamada al modelo con reintento que DISTINGUE 429 de 5xx ───────────
+      - name: Pedir el review al modelo
+        if: steps.check.outputs.skip == 'false' && steps.diff.outputs.skip == 'false'
+        id: review
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_BASE_URL: ${{ vars.OPENAI_BASE_URL || '{{OPENAI_BASE_URL_DEFAULT}}' }}
+          AUDITOR_MODEL: ${{ vars.AUDITOR_MODEL || '{{AUDITOR_MODEL_DEFAULT}}' }}
+          FORCE_VERDICT: ${{ steps.history.outputs.force_verdict }}
+        run: |
+          set -euo pipefail
+
+          # (armado del payload: system prompt + diff + historial. Ver un
+          # workflow de auditor de referencia en producción para el prompt
+          # completo — acá se deja el esqueleto del bucle de reintento, que
+          # es la parte que `check-auditor-reintento.mjs` verifica byte a byte.)
+
+          HTTP_CODE=000
+          INTENTOS=5
+          for ATTEMPT in $(seq 1 $INTENTOS); do
+            HTTP_CODE=$(curl -sS -o "${RUNNER_TEMP}/openai-resp.json" -w "%{http_code}" \
+              -D "${RUNNER_TEMP}/openai-headers.txt" \
+              --max-time 300 \
+              "${OPENAI_BASE_URL}/chat/completions" \
+              -H "Authorization: Bearer $OPENAI_API_KEY" \
+              -H "Content-Type: application/json" \
+              -d @"${RUNNER_TEMP}/openai-req.json") || HTTP_CODE=000
+            [ "$HTTP_CODE" = "200" ] && break
+            [ "$ATTEMPT" = "$INTENTOS" ] && break
+
+            if [ "$HTTP_CODE" = "429" ]; then
+              # SIN CUOTA, no gateway caído. Reintentar a los 10s no sirve:
+              # la ventana de cuota se mide en minutos. Se respeta
+              # `Retry-After` si viene, con tope de 120s.
+              ESPERA=$(grep -i '^retry-after:' "${RUNNER_TEMP}/openai-headers.txt" 2>/dev/null \
+                | tail -1 | tr -d '\r' | awk '{print $2}' | grep -E '^[0-9]+$' || true)
+              [ -z "$ESPERA" ] && ESPERA=$((ATTEMPT * 60))
+              [ "$ESPERA" -gt 120 ] && ESPERA=120
+              echo "::warning::Intento $ATTEMPT: el gateway no tiene cuota (HTTP 429). Espero ${ESPERA}s."
+            else
+              # 5xx / red: el gateway está caído o inestable, backoff corto.
+              ESPERA=$((ATTEMPT * 10))
+              echo "::warning::Intento $ATTEMPT falló (HTTP $HTTP_CODE). Reintentando en ${ESPERA}s."
+            fi
+            sleep "$ESPERA"
+          done
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            if [ "$HTTP_CODE" = "429" ]; then
+              echo "::error title=El Auditor no revisó — sin cuota::El gateway devolvió HTTP 429 en los $INTENTOS intentos. ESTE ROJO NO ES UN VEREDICTO: el PR no fue revisado. Recargá cuota en el gateway y volvé a correr el workflow."
+            else
+              echo "::error title=El Auditor no revisó — gateway caído::El gateway respondió HTTP $HTTP_CODE tras $INTENTOS intentos. ESTE ROJO NO ES UN VEREDICTO: el PR no fue revisado."
+            fi
+            head -c 2000 "${RUNNER_TEMP}/openai-resp.json" || true
+            exit 1
+          fi
+
+          jq -r '.choices[0].message.content // ""' "${RUNNER_TEMP}/openai-resp.json" > "${RUNNER_TEMP}/review.md"
+
+          if [ ! -s "${RUNNER_TEMP}/review.md" ]; then
+            FINISH=$(jq -r '.choices[0].finish_reason // "?"' "${RUNNER_TEMP}/openai-resp.json")
+            echo "::error::El modelo devolvió contenido vacío (finish_reason=$FINISH). Subí max_completion_tokens o bajá reasoning_effort."
+            exit 1
+          fi
+
+          VERDICT=$(grep -oE 'VEREDICTO: *(APRUEBO|BLOQUEO|NECESITA_HUMANO)' "${RUNNER_TEMP}/review.md" | tail -1 | awk '{print $NF}')
+          if [ -z "$VERDICT" ]; then
+            VERDICT="NECESITA_HUMANO"
+            echo "::warning title=Sin veredicto::El Auditor no devolvió un VEREDICTO explícito. Default: NECESITA_HUMANO"
+          fi
+
+          if [ -n "$FORCE_VERDICT" ]; then
+            echo "::warning title=Escalado forzado::$VERDICT → $FORCE_VERDICT (regla anti-loop)"
+            VERDICT="$FORCE_VERDICT"
+          fi
+
+          echo "Veredicto: $VERDICT"
+          echo "verdict=$VERDICT" >> "$GITHUB_OUTPUT"
+
+      - name: Publicar el review como comentario
+        if: steps.check.outputs.skip == 'false' && steps.diff.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        run: gh pr comment "$PR_NUMBER" --body-file "${RUNNER_TEMP}/review.md"
+
+      - name: Etiquetar según el veredicto
+        if: steps.check.outputs.skip == 'false' && steps.diff.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          VERDICT: ${{ steps.review.outputs.verdict }}
+          CRITICAL_PATHS: ${{ steps.paths.outputs.critical }}
+        run: |
+          for L in "auditor:aprobado" "auditor:bloqueado" "auditor:requiere-humano"; do
+            gh pr edit "$PR_NUMBER" --remove-label "$L" 2>/dev/null || true
+          done
+
+          if [ "$CRITICAL_PATHS" = "true" ] && [ "$VERDICT" = "APRUEBO" ]; then
+            LABEL="auditor:requiere-humano"; COLOR="FBCA04"
+          else
+            case "$VERDICT" in
+              APRUEBO) LABEL="auditor:aprobado";        COLOR="0E8A16" ;;
+              BLOQUEO) LABEL="auditor:bloqueado";       COLOR="B60205" ;;
+              *)       LABEL="auditor:requiere-humano"; COLOR="FBCA04" ;;
+            esac
+          fi
+          gh label create "$LABEL" --color "$COLOR" --description "Veredicto de El Auditor" 2>/dev/null || true
+          gh pr edit "$PR_NUMBER" --add-label "$LABEL"
+
+      # ── AUTO-MERGE CONDICIONADO: las TRES condiciones a la vez ─────────────
+      - name: Auto-merge si aprobó, no toca paths críticos y el diff es chico
+        if: |
+          steps.check.outputs.skip == 'false' &&
+          steps.diff.outputs.skip == 'false' &&
+          steps.review.outputs.verdict == 'APRUEBO' &&
+          steps.paths.outputs.critical == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ steps.pr.outputs.url }}
+          CI_NAME: "{{CI_CHECK_NAME}}"
+        run: |
+          echo "Aprobado, sin paths críticos y diff dentro del umbral → encolando auto-merge squash"
+          if ! gh pr merge --squash --delete-branch --auto "$PR_URL" 2>/dev/null; then
+            echo "auto-merge nativo no disponible — esperando CI y mergeando a mano"
+            for _ in $(seq 1 60); do
+              STATUS=$(gh pr checks "$PR_URL" --json name,bucket --jq ".[] | select(.name==\"$CI_NAME\") | .bucket" | head -1)
+              if [ "$STATUS" = "pass" ]; then
+                gh pr merge --squash --delete-branch "$PR_URL"
+                exit 0
+              elif [ "$STATUS" = "fail" ]; then
+                echo "CI falló — no se mergea"
+                exit 0
+              fi
+              sleep 10
+            done
+            echo "Timeout esperando a CI"
+            exit 0
+          fi

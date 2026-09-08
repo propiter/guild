@@ -1,0 +1,72 @@
+<!-- ============================================================
+INSTRUCCIONES DE USO — BORRAR ESTE BLOQUE AL LLENAR EL DOCUMENTO
+
+BLUEPRINT.md es el CHARTER: el documento que alguien lee UNA vez para
+entender el proyecto entero en 5 minutos. La regla más importante de este
+archivo es negativa: NO DUPLICA DETALLE. Cada sección remite al documento
+canónico que tiene el detalle real (STACK.md, ARQUITECTURA.md,
+MODELO-DATOS.md, ROADMAP.md, PRD.md).
+
+Por qué esta regla existe: un charter que copia el detalle de los otros
+docs se desactualiza el mismo día que el detalle cambia en el doc
+canónico — ahora hay dos versiones y ninguna se sabe cuál es la vigente.
+Un charter que solo REFERENCIA no puede desactualizarse de esa forma: en
+el peor caso, el link apunta a algo que creció, pero nunca contradice.
+
+Si te encontrás escribiendo más de 2-3 líneas en una sección de este
+documento, es una señal de que ese contenido pertenece al doc canónico y
+acá debería quedar solo el resumen + el link.
+============================================================ -->
+
+# Charter — {{NOMBRE_PROYECTO}}
+
+> Acta de constitución del proyecto: visión, alcance, decisiones y criterios de éxito.
+> Los detalles viven en los documentos canónicos (no se duplican acá, para evitar
+> divergencia).
+>
+> Canónicos: arquitectura → [ARQUITECTURA.md](./ARQUITECTURA.md) · stack/ADRs →
+> [STACK.md](./STACK.md) · datos → [MODELO-DATOS.md](./MODELO-DATOS.md) · plan →
+> [ROADMAP.md](./ROADMAP.md) · producto → [PRD.md](./PRD.md) · estándares →
+> [STANDARDS.md](./STANDARDS.md).
+
+---
+
+## 1. Visión
+
+{{VISION_EN_2_3_LINEAS}}
+
+## 2. Para quién
+
+{{A_QUIEN_SIRVE_EN_2_LINEAS}}. Detalle en [PRD.md](./PRD.md).
+
+## 3. Propuesta de valor
+
+{{QUE_HUECO_DEL_MERCADO_O_PROBLEMA_CUBRE_QUE_NADIE_MAS_CUBRE_A_LA_VEZ}}.
+
+## 4. Qué reutilizamos / de dónde partimos
+
+{{SI_APLICA: reconstrucción de un sistema existente, dominio heredado, etc. Borrar si no
+aplica.}}
+
+## 5. Decisiones fundacionales (locked)
+
+> Solo las 3-6 decisiones que, si se revirtieran, obligan a rehacer una parte grande del
+> proyecto. El resto vive en `STACK.md` como ADRs.
+
+1. {{DECISION_1}} → `STACK.md ADR-{{N}}`.
+2. {{DECISION_2}} → `ARQUITECTURA.md §{{N}}`.
+3. {{DECISION_3}}.
+
+## 6. Alcance por fases (resumen)
+
+{{RESUMEN_DE_UNA_LINEA_POR_FASE}}. Detalle y SDDs en [ROADMAP.md](./ROADMAP.md).
+
+## 7. Criterios de éxito
+
+- {{CRITERIO_1_MEDIBLE}}
+- {{CRITERIO_2_MEDIBLE}}
+- Sin deuda técnica acumulada sin registrar (revisión por DoD de `STANDARDS.md`).
+
+## 8. Decisiones del owner (no bloquean el arranque, pero {{ALGUNA_TIENE_FECHA}})
+
+{{LISTA_BREVE}}. Detalle en [ROADMAP.md](./ROADMAP.md) → *Decisiones del owner*.

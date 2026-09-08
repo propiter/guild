@@ -1,0 +1,46 @@
+<!-- ============================================================
+INSTRUCCIONES DE USO — BORRAR ESTE BLOQUE AL LLENAR EL DOCUMENTO
+
+Un glosario evita que el mismo concepto tenga dos nombres en el código (o
+que dos conceptos distintos compartan uno) — el error que agrupa por
+"se entiende por contexto" y que dos personas (o un agente y un humano)
+terminen discutiendo sobre algo que ya estaba resuelto, solo que con
+otras palabras.
+
+Agrupá por dominio, no alfabéticamente: un glosario alfabético mezcla
+términos de negocio con términos técnicos y no enseña el modelo mental
+del proyecto. El orden de las secciones abajo es sugerido — ajustalo a
+los dominios reales del proyecto (regulatorio, si aplica; técnico;
+producto).
+
+Cada término: nombre en **negrita**, definición en una línea. Si el
+término tiene una decisión de código detrás (ej. "por qué se llama así y
+no de otra forma"), anotalo — eso es lo que un glosario aporta que un
+diccionario no.
+============================================================ -->
+
+# Glosario — {{NOMBRE_PROYECTO}}
+
+> Términos del dominio, de la regulación (si aplica) y de la arquitectura. Fuente común
+> para mantener consistencia entre código y documentación.
+
+---
+
+## Dominio {{NOMBRE_DEL_DOMINIO_DE_NEGOCIO}}
+
+- **{{TERMINO}}**: {{DEFINICION_EN_UNA_LINEA}}.
+- **{{TERMINO}}**: {{DEFINICION}}.
+
+## Regulación {{NOMBRE_ENTE_REGULATORIO_SI_APLICA}}
+
+> Borrar esta sección si el proyecto no tiene un marco regulatorio específico.
+
+- **{{TERMINO_REGULATORIO}}**: {{DEFINICION}}. {{REFERENCIA_A_LA_NORMA_SI_APLICA}}
+
+## Arquitectura / técnico
+
+- **{{TERMINO_TECNICO}}**: {{DEFINICION}}. {{POR_QUE_SE_LLAMA_ASI_SI_NO_ES_OBVIO}}
+
+## Producto
+
+- **{{TERMINO_DE_PRODUCTO}}**: {{DEFINICION}}.

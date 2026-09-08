@@ -1,0 +1,256 @@
+# ==============================================================================
+# Build & Push — plantilla genérica del kit.
+#
+# • Push a main       → build → tags :lab + :sha-XXX          → webhook LAB
+# • Push tag v*.*.*   → build → :latest + :vX.Y.Z + :sha-XXX  → webhook PROD
+# • Pull request      → build SIN push (guard de drift Dockerfile ↔ código)
+#
+# El stack LAB consume :lab y el de PROD :latest, así que un merge a main
+# nunca toca producción por accidente.
+#
+# MATRIZ DE IMÁGENES. Agregar una imagen es agregar una fila — no reescribir
+# el workflow. Cada fila declara su propio puerto y sus DOS rutas de smoke: la
+# de liveness (`/healthz`, no debe tocar infraestructura) y la que EJERCITA un
+# provider inyectado (para cazar DI rota que `/healthz` no detecta: un
+# framework de DI puede arrancar "sano" y devolver 500 en la primera petición
+# real si el bundler no emitió los metadatos que la inyección necesita).
+#
+# Placeholders `{{...}}`:
+#   {{REGISTRY}}              host del registry (ej. registry.tuempresa.com)
+#   {{IMAGE_NAMESPACE}}       namespace/organización dentro del registry
+#   {{LAB_WEBHOOK_SECRET}}    nombre del secret con la URL de redeploy LAB
+#   {{PROD_WEBHOOK_SECRET}}   nombre del secret con la URL de redeploy PROD
+#   {{CI_RUNNER_VAR}}         variable de repo para elegir runner
+# ==============================================================================
+
+name: Build & Push
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - ".gitignore"
+      - ".vscode/**"
+  # Guard pre-merge: buildea (SIN push) cuando el PR toca la superficie que
+  # puede romper la imagen. Esta lista tiene que incluir TODO lo que el
+  # Dockerfile copia — no sólo el código fuente. Un archivo de config que
+  # decide cómo se transpila (ej. el que activa/desactiva metadatos de tipos
+  # para la DI) es exactamente el tipo de cambio de una línea que rompe la
+  # imagen sin tocar `src/`.
+  pull_request:
+    paths:
+      - "{{DOCKERFILE_GLOB}}"
+      - "{{SOURCE_GLOB}}"
+      - "{{BUILD_CONFIG_GLOB}}"
+      - "**/package.json"
+      - "{{LOCKFILE}}"
+      - ".dockerignore"
+      - ".github/workflows/build-push.yml"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag adicional para las imágenes (opcional, además de :lab/:latest y :sha)"
+        required: false
+        type: string
+
+concurrency:
+  group: build-push-${{ github.ref }}
+  cancel-in-progress: false # nunca cancelar un push en curso al registry
+
+env:
+  REGISTRY: {{REGISTRY}}
+  IMAGE_NAMESPACE: {{IMAGE_NAMESPACE}}
+
+jobs:
+  build-push:
+    name: ${{ matrix.image }}
+    runs-on: ${{ vars.{{CI_RUNNER_VAR}} || 'ubuntu-24.04' }}
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Una fila por imagen. Copiá este bloque y completá los cuatro
+          # campos — son los únicos que cambian entre imágenes.
+          - image: {{IMAGE_NAME}}
+            dockerfile: {{DOCKERFILE_PATH}}
+            title: "{{PROJECT_NAME}} — {{IMAGE_TITLE}}"
+            # Ruta de LIVENESS: sólo dice "el proceso escucha". No debe
+            # depender de infraestructura (bases, colas) — si depende, un
+            # 503 acá dispara un reinicio del orquestador que no arregla la
+            # infraestructura caída y puede tirar conexiones sanas de otras
+            # instancias.
+            healthcheck_path: /healthz
+            # Ruta que USA el provider inyectado — la que realmente cachea
+            # DI rota. Tiene que ser una ruta que resuelva al menos un
+            # servicio con dependencias inyectadas por constructor.
+            smoke_path: {{SMOKE_PATH}}
+            puerto_del_contenedor: {{CONTAINER_PORT}}
+            # Vacío si el Dockerfile no declara ARG. Un ARG que la imagen no
+            # consume deja un warning en cada build.
+            build_args: ""
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login a ${{ env.REGISTRY }}
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: Metadata de la imagen (tags + labels)
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.image }}
+          tags: |
+            type=raw,value=lab,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=sha,format=short,prefix=sha-
+            type=raw,value=${{ inputs.tag }},enable=${{ inputs.tag != '' }}
+          labels: |
+            org.opencontainers.image.title=${{ matrix.title }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Build & push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: ${{ matrix.build_args }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,scope=${{ matrix.image }},mode=max
+          platforms: linux/amd64
+          provenance: false
+
+      # SMOKE TEST REAL: docker run + curl contra DOS rutas. Un build verde
+      # no prueba que el contenedor SIRVA — sólo que el Dockerfile no tiene
+      # errores de sintaxis ni de dependencias faltantes en tiempo de build.
+      #
+      # Se salta en PRs (`if` de arriba) porque ahí la imagen no se publica
+      # (push: false) y por lo tanto no hay tag que arrancar con confianza de
+      # reproducibilidad — se prueba después de push, contra el tag real.
+      - name: Smoke test de la imagen
+        if: github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
+          SHORT_SHA="$(printf '%s' "${GITHUB_SHA}" | cut -c1-7)"
+          IMAGE="${REGISTRY}/${IMAGE_NAMESPACE}/${{ matrix.image }}:sha-${SHORT_SHA}"
+          PUERTO="${{ matrix.puerto_del_contenedor }}"
+          echo "Probando ${IMAGE}"
+          docker run -d --name smoke-${{ matrix.image }} -p "18080:${PUERTO}" "${IMAGE}"
+
+          # 1. Liveness: el proceso escucha.
+          for i in $(seq 1 30); do
+            if curl -fsS "http://127.0.0.1:18080${{ matrix.healthcheck_path }}" | grep -qx ok; then
+              echo "✅ ${{ matrix.healthcheck_path }} responde 'ok'"
+              break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "❌ ${{ matrix.healthcheck_path }} no respondió 'ok' en 30 intentos"
+              docker logs smoke-${{ matrix.image }} || true
+              exit 1
+            fi
+            sleep 1
+          done
+
+          # 2. La ruta que USA el provider inyectado. Sano → 200. Con la DI
+          # rota, el healthcheck de arriba puede pasar igual (el módulo
+          # resolvió) y ESTA ruta es la que revienta con 500 en la primera
+          # petición real. Ver el porqué medido en el README de
+          # `templates/github`.
+          CODE="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:18080${{ matrix.smoke_path }}")"
+          [ "$CODE" = "200" ] || {
+            echo "❌ ${{ matrix.smoke_path }} devolvió HTTP ${CODE}"
+            docker logs smoke-${{ matrix.image }} || true
+            exit 1
+          }
+          echo "✅ ${{ matrix.smoke_path }} responde 200"
+          docker rm -f smoke-${{ matrix.image }}
+
+      - name: Resumen
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+          IMAGE: ${{ matrix.image }}
+        run: |
+          set -eu
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "### ✅ Build OK (sin push — guard de PR): ${IMAGE}" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          {
+            echo "### ✅ Publicada ${REGISTRY}/${IMAGE_NAMESPACE}/${IMAGE}"
+            echo ""
+            echo "Tags:"
+            echo '```'
+            printf '%s\n' "$TAGS"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  redeploy-lab:
+    name: Redeploy LAB
+    needs: build-push
+    if: github.ref == 'refs/heads/main'
+    runs-on: ${{ vars.{{CI_RUNNER_VAR}} || 'ubuntu-24.04' }}
+    timeout-minutes: 5
+    steps:
+      - name: Webhook LAB
+        env:
+          LAB_WEBHOOK: ${{ secrets.{{LAB_WEBHOOK_SECRET}} }}
+        run: |
+          set -eu
+          if [ -z "${LAB_WEBHOOK:-}" ]; then
+            {
+              echo "### ⚠️ {{LAB_WEBHOOK_SECRET}} no configurado — se omite el redeploy"
+              echo "La imagen SÍ se publicó en el registry."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          CODE="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$LAB_WEBHOOK")"
+          if [ "$CODE" -ge 200 ] && [ "$CODE" -lt 300 ]; then
+            echo "### ✅ Redeploy LAB disparado ($CODE)" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### ❌ El webhook LAB falló: HTTP $CODE" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+  redeploy-prod:
+    name: Redeploy PROD
+    needs: build-push
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ${{ vars.{{CI_RUNNER_VAR}} || 'ubuntu-24.04' }}
+    timeout-minutes: 5
+    steps:
+      - name: Webhook PROD
+        env:
+          PROD_WEBHOOK: ${{ secrets.{{PROD_WEBHOOK_SECRET}} }}
+        run: |
+          set -eu
+          if [ -z "${PROD_WEBHOOK:-}" ]; then
+            echo "### ⚠️ {{PROD_WEBHOOK_SECRET}} no configurado — se omite" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          CODE="$(curl -s -o /dev/null -w '%{http_code}' -X POST "$PROD_WEBHOOK")"
+          if [ "$CODE" -ge 200 ] && [ "$CODE" -lt 300 ]; then
+            echo "### ✅ Redeploy PROD disparado ($CODE)" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### ❌ El webhook PROD falló: HTTP $CODE" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi

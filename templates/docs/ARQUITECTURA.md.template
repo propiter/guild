@@ -1,0 +1,124 @@
+<!-- ============================================================
+INSTRUCCIONES DE USO — BORRAR ESTE BLOQUE AL LLENAR EL DOCUMENTO
+
+ARQUITECTURA.md responde "cómo están armadas las piezas y por qué así" —
+NO "qué tecnología se usó" (eso es STACK.md, con su formato ADR) ni "qué
+tablas hay" (eso es MODELO-DATOS.md). Si te encontrás justificando una
+elección de tecnología puntual acá, cortala y mandala a STACK.md con un
+ADR — este doc solo debe REFERENCIAR esa decisión.
+
+Por qué cada sección existe:
+- Principios rectores: la vara contra la que se juzga cualquier decisión
+  de diseño futura. Sin esto, cada feature nueva discute la arquitectura
+  desde cero.
+- Diagrama/modelo de despliegue: una imagen (aunque sea ASCII) evita que
+  10 personas tengan 10 modelos mentales distintos del mismo sistema.
+- Resiliencia (tabla de escenarios de falla): obliga a pensar en qué pasa
+  cuando algo se cae ANTES de que se caiga en producción.
+- Anti-patterns que evitamos: documenta las lecciones ya aprendidas (a
+  veces de otro proyecto) para que no se repitan por desconocimiento.
+
+Marcá con fecha cualquier revisión que descarte una decisión anterior
+("Revisión N (fecha): se descarta X por Y") — la historia de por qué se
+cambió de opinión vale tanto como la decisión vigente.
+============================================================ -->
+
+# Arquitectura — {{NOMBRE_PROYECTO}}
+
+> {{RESUMEN_DE_UNA_LINEA: p.ej. "arquitectura offline-first, multitenant, diseñada para
+> clientes no técnicos"}}. Detalle de stack en `STACK.md`; detalle de datos en
+> `MODELO-DATOS.md`; detalle de seguridad en `SEGURIDAD.md`.
+
+---
+
+## 1. Principios rectores
+
+> 4-7 principios, no una lista de buenas intenciones. Cada uno tiene que poder usarse
+> para rechazar una propuesta concreta.
+
+1. {{PRINCIPIO_1: p.ej. "el camino crítico nunca espera a un componente externo"}}
+2. {{PRINCIPIO_2}}
+3. {{PRINCIPIO_3}}
+
+---
+
+## 2. Modelo de despliegue / topología
+
+> Un diagrama (ASCII sirve) de las piezas grandes y cómo se hablan. Si el proyecto tiene
+> más de un "lado" (cliente/servidor, offline/online, edge/nube), este es el lugar para
+> mostrar la frontera.
+
+```
+{{DIAGRAMA_ASCII_DE_TOPOLOGIA}}
+```
+
+{{DESCRIPCION_DE_CADA_PIEZA_DEL_DIAGRAMA}}
+
+---
+
+## 3. {{SECCION_DE_DECISION_CRITICA_DEL_DOMINIO}}
+
+> Ejemplo de qué va acá: el modelo de sincronización offline, el modelo de particionado,
+> el flujo crítico del dominio (una venta, una emisión, un pago). Es la sección que más
+> varía de proyecto a proyecto — dale el nombre real del concepto, no un genérico.
+
+{{CONTENIDO}}
+
+---
+
+## 4. Resiliencia
+
+> Tabla de "qué pasa si esto se cae" — pensala ANTES del incidente, no como post-mortem.
+
+| Escenario | Comportamiento |
+|---|---|
+| {{ESCENARIO_DE_FALLA_1}} | {{QUE_PASA}} |
+| {{ESCENARIO_DE_FALLA_2}} | {{QUE_PASA}} |
+
+---
+
+## 5. Multitenancy / aislamiento
+
+> Borrar esta sección si el proyecto no es multitenant. Si lo es, decir CÓMO se aísla
+> (RLS, schema-per-tenant, DB-per-tenant) — el mecanismo elegido y su ADR viven en
+> `STACK.md`; acá solo el modelo jerárquico.
+
+```
+{{JERARQUIA_DE_ENTIDADES: p.ej. tenant → org → proyecto → recurso}}
+```
+
+---
+
+## 6. Puertos y adaptadores (integraciones externas)
+
+> Borrar si no aplica. Si el proyecto integra un proveedor externo cuya elección todavía
+> no está cerrada (o que puede cambiar), documentar acá el PUERTO (la interfaz), nunca el
+> nombre del proveedor en el dominio.
+
+**Qué tiene que ofrecer cualquier proveedor detrás de este puerto** (requisitos de
+selección, no supuestos):
+
+| Requisito | Por qué |
+|---|---|
+| {{REQUISITO_1}} | {{POR_QUE}} |
+
+## 7. Stack técnico (resumen — detalle en STACK.md)
+
+{{RESUMEN_DE_UNA_LINEA_POR_CAPA}}
+
+## 8. Seguridad (resumen — detalle en SEGURIDAD.md)
+
+{{RESUMEN_DE_2_3_LINEAS}}
+
+## 9. Escalabilidad
+
+- {{ESTRATEGIA_DE_ESCALA_1}}
+- {{ESTRATEGIA_DE_ESCALA_2}}
+
+## 10. Anti-patterns que evitamos
+
+> Lecciones ya aprendidas (propias o de un proyecto anterior/de referencia) que no se
+> quieren repetir. Sirve de checklist rápido en un review.
+
+- ❌ {{ANTIPATRON_1}}
+- ❌ {{ANTIPATRON_2}}

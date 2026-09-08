@@ -1,0 +1,103 @@
+// turbo.json — orquestador de tareas del monorepo (Turborepo).
+//
+// Turbo cachea cada tarea por hash de sus inputs (código + config + env declarada) y
+// resuelve el grafo de dependencias entre paquetes del workspace: "^build" significa
+// "primero build de todo lo que este paquete depende", no "build de este paquete".
+//
+// ESTE ARCHIVO ACEPTA COMENTARIOS `//` — no es JSONC por casualidad, Turbo lo tolera
+// igual que tsconfig.json. Aun así, si tu editor o alguna herramienta de terceros se
+// queja, quitá los comentarios de línea y dejá el bloque de doc de arriba.
+{
+  "$schema": "https://turbo.build/schema.json",
+
+  /*
+   * globalPassThroughEnv — variables de entorno que el proceso HIJO necesita ver
+   * TAL CUAL, sin que Turbo las filtre.
+   *
+   * POR QUÉ HACE FALTA DECLARAR ESTO: Turbo filtra el entorno por defecto. Solo pasa
+   * una lista curada; lo demás no llega al proceso hijo. Sin declarar una variable
+   * acá, el proceso la ve como si nunca se hubiera seteado — y el síntoma NO es un
+   * error claro de configuración, es el comportamiento por defecto de la aplicación
+   * (puerto equivocado, conexión al host por defecto) disfrazado de otra cosa (un
+   * servicio "caído" que en realidad nunca recibió la variable).
+   *
+   * `globalPassThroughEnv` y NO `globalEnv`: estas son variables de CONEXIÓN — no
+   * cambian el resultado de compilar ni el contenido del build, así que no tienen por
+   * qué invalidar el cache de ninguna tarea. Si agregás una variable que SÍ cambia el
+   * resultado de compilar (un feature flag leído en build time, por ejemplo), esa va
+   * en `globalEnv` o en el `env` de la tarea puntual — nunca acá.
+   *
+   * Reemplazá esta lista por las variables reales de tu proyecto. Las de abajo son
+   * las que casi cualquier API con base de datos termina necesitando; documentá cada
+   * una que agregues con el mismo criterio: sin ella declarada, ¿qué pasa exactamente?
+   */
+  "globalPassThroughEnv": [
+    // Sin esto: el proceso hijo se conecta al host/puerto por defecto del driver, no
+    // al que el orquestador (CI, Docker Compose, Kubernetes) le indicó. En CI, donde
+    // el contenedor de base de datos suele escuchar en un puerto efímero, el síntoma
+    // es "ECONNREFUSED" — que parece la base caída y no lo es.
+    "DATABASE_URL",
+
+    // El puerto en el que escucha el servidor HTTP. Sin declararla, el proceso
+    // escucha en su default mientras el orquestador rutea tráfico a otro puerto —
+    // el proceso está "sano" y no recibe una sola petición.
+    "PORT",
+
+    // Convención: sin prefijo de proyecto, la inyecta el runtime (Docker, CI,
+    // Kubernetes), no el código de la aplicación.
+    "NODE_ENV",
+
+    // Ejemplo de patrón por comodín para secretos rotables (pepper, claves de firma
+    // por versión: `{{APP_PREFIX}}_SECRET_V1`, `_V2`, ...). Usar el comodín y NO una
+    // lista de nombres explícita: una lista se desincroniza el día que alguien monta
+    // una versión nueva del secreto y se olvida de agregarla acá — Turbo la filtra
+    // en silencio y el proceso arranca sin la clave que el operador sí puso.
+    "{{APP_PREFIX}}_SECRET_*"
+  ],
+
+  "globalDependencies": [".env", "tsconfig.base.json"],
+
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+
+    "typecheck": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+
+    "test": {
+      "outputs": ["coverage/**"]
+    },
+
+    "test:coverage": {
+      "dependsOn": ["^build"],
+      "outputs": ["coverage/**"],
+      "cache": false
+    },
+
+    "test:integration": {
+      // Sin cache: una suite de integración habla con infraestructura real (DB,
+      // colas). Cachear su resultado por hash de inputs de código sería fingir que
+      // el estado externo no importa.
+      "cache": false,
+      "env": ["DATABASE_URL", "REDIS_URL"]
+    },
+
+    "test:watch": {
+      "cache": false,
+      "persistent": true
+    },
+
+    "clean": {
+      "cache": false
+    }
+  }
+}

@@ -1,0 +1,219 @@
+<!-- ============================================================
+INSTRUCCIONES DE USO — BORRAR ESTE BLOQUE AL LLENAR EL DOCUMENTO
+
+Esta es la plantilla MÁS importante del kit: es el documento que hace que
+"construir un recurso/feature nueva" sea un procedimiento mecánico y no
+una decisión de diseño cada vez. Dedicále el tiempo que haga falta.
+
+Por qué existe cada bloque:
+
+- Principio rector: la vara única contra la que se mide cualquier
+  entrega. Sin una frase corta y memorizable acá, "cero deuda técnica" se
+  vuelve una aspiración que cada quien interpreta distinto.
+- No-negociables (heredado): lo que CUALQUIER pieza nueva hereda de la
+  base y NUNCA reimplementa a mano. Sin esta lista, cada desarrollador
+  (o agente) reinventa auth, manejo de errores o multitenancy por su
+  cuenta, y las 20 implementaciones divergen de 20 formas sutiles.
+- Anatomía de un recurso: el molde LITERAL — la estructura de carpetas y
+  archivos que un recurso nuevo copia. "Agregar un recurso es copiar el
+  anterior y rellenar" es el objetivo; si hace falta pensar la estructura
+  cada vez, el molde no está bien escrito.
+- Reglas por dimensión: una tabla por cada eje que puede variar
+  (naming, datos, errores, tipos, testing) — para que "cómo se hace X"
+  tenga una sola respuesta buscable, no una convención tácita que solo
+  vive en la cabeza de quien escribió el primer módulo.
+- Definition of Done: el gate binario. Si falta un ítem, el recurso NO
+  EXISTE todavía, sin importar cuánto código tenga. Esto es lo que evita
+  el "funciona en mi máquina, lo termino después".
+- Proceso: cómo se organiza el trabajo (SDD, PRs, revisión) — la mitad
+  social/de flujo de las reglas técnicas de arriba.
+
+Ajustá el contenido de ejemplo (nombres de paquetes, comandos, tipos de
+error) al stack real del proyecto — pero mantené la ESTRUCTURA de
+secciones: es la estructura la que hace que el documento sea usable como
+checklist, no la redacción particular.
+============================================================ -->
+
+# Estándares de ingeniería — {{NOMBRE_PROYECTO}}
+
+> **Regla madre:** cada pieza (endpoint, módulo, componente) se construye IGUAL. El molde
+> está acá. Construir una pieza nueva = rellenar el molde, no reinventarlo. Si dos piezas
+> se ven distintas sin una razón documentada, una de las dos está mal.
+>
+> Reglas **obligatorias**, no sugerencias. Complementa `CLAUDE.md` (convenciones de código
+> del día a día) y el proceso de PRs. Ante conflicto, este documento gana para la
+> construcción de piezas nuevas.
+
+---
+
+## 0. Principio rector (innegociable)
+
+> **{{PRINCIPIO_RECTOR_EN_UNA_FRASE: p.ej. "Código limpio, CERO deuda técnica. Todo se
+> corrige de RAÍZ. CERO parches."}}**
+
+Qué significa en la práctica:
+- **Nada de "lo arreglo después".** Si algo está mal, se arregla en su causa, no se tapa
+  el síntoma. No se mergea un workaround "temporal".
+- **No se duplica para "ir rápido".** Si aparece duplicación, se extrae.
+- **No se deja roto lo que se tocó.** Si un cambio rompe un patrón existente, se actualiza
+  el patrón completo, no solo el caso nuevo.
+- **No hay `TODO`/`FIXME` huérfanos.** Todo pendiente real es una fila en
+  `ROADMAP.md` → *Deuda técnica registrada*, con motivo y ventana — no un comentario que
+  solo ve quien abre ese archivo.
+- **No se silencian errores** (catch vacío, supresores de tipos, `any` para "que
+  compile"). Se entiende y se resuelve.
+- **Si una decisión inicial fue equivocada, se revierte de raíz**, no se acumulan capas
+  sobre el error — y se corrige el código **y** la doc en el mismo movimiento.
+
+Si una entrega no cumple esto, **no entra**. Preferimos hacer menos, bien, que más, con
+deuda.
+
+---
+
+## 1. Los NO-NEGOCIABLES (lo que TODO recurso hereda — no se reimplementa por pieza)
+
+> Esto son los "givens" de la base ya construida. Si una pieza nueva los toca a mano en
+> vez de usarlos tal cual, está mal — el punto de esta tabla es que nadie tenga que volver
+> a decidir esto.
+
+| Given | Cómo se hereda | Estado |
+|---|---|---|
+| **Auth** | {{MECANISMO_GLOBAL: p.ej. "guard global, solo endpoints públicos explícitos"}} | {{✅ construido \| 🚧}} |
+| **Multi-tenant / aislamiento** | {{MECANISMO: p.ej. "TODA query vía helper `withTenant`, nunca SQL crudo sin contexto"}} | {{✅\|🚧}} |
+| **Contrato de error** | {{MECANISMO: ver `API.md` §5}} | {{✅\|🚧}} |
+| **Request-id / trazabilidad** | {{MECANISMO}} | {{✅\|🚧}} |
+| **Idempotencia** | {{EN_QUE_OPERACIONES}} | {{✅\|🚧}} |
+| **Dinero** | {{TIPO_Y_LIBRERIA}}. `number`/`float` para plata está PROHIBIDO | ✅ convención |
+| **IDs públicos** | {{FORMATO}} | ✅ convención |
+| **Logs** | {{LOGGER_ESTRUCTURADO}}. NUNCA `console.log`/`print`. NUNCA secretos en logs | ✅ convención |
+
+---
+
+## 2. La ANATOMÍA de una pieza (el molde literal)
+
+Toda pieza nueva vive en `{{RUTA_BASE: p.ej. apps/api/src/modules/<recurso>/}}` con esta
+estructura:
+
+```
+{{RUTA_BASE}}/{{ejemplo_recurso}}/
+├── {{recurso}}.controller.{{ext}}     # THIN. Parsea, llama, responde. CERO lógica.
+├── {{recurso}}.service.{{ext}}        # Lógica de negocio + persistencia.
+├── {{recurso}}.schema.{{ext}}         # Validación: request + response. ÚNICA fuente.
+├── {{recurso}}.module.{{ext}}         # Wiring.
+└── __tests__/
+    ├── {{recurso}}.service.test.{{ext}}     # unit (TDD)
+    └── {{recurso}}.controller.test.{{ext}}  # unit (TDD)
+{{RUTA_INTEGRACION}}/
+└── {{recurso}}.it.test.{{ext}}        # integración (DB real, {{aislamiento_si_aplica}})
+```
+
+### Reglas de capas (container/presentational aplicado al backend)
+
+1. **Controller/handler = THIN.** Valida el input por su schema, llama al service,
+   devuelve. **Sin queries, sin lógica de negocio, sin `if` de negocio.** Si el controller
+   tiene lógica, va al service.
+2. **Service = la lógica.** Toda la lógica de negocio + persistencia. Accede a datos SOLO
+   vía {{HELPER_DE_ACCESO_A_DATOS}}. Lanza el error tipado del contrato (nunca un error
+   crudo del lenguaje). Devuelve objetos de dominio, no filas crudas de la base.
+3. **Schema = única fuente de verdad.** Define request Y response. Si el proyecto genera
+   OpenAPI/spec desde acá, es de ESTE archivo que se genera — no se escribe el tipo dos
+   veces.
+4. **Sin acceso a datos que salte el aislamiento.** {{REGLA_DE_AISLAMIENTO: p.ej. "el rol
+   de runtime es fail-closed: una query sin contexto de tenant devuelve 0 filas, nunca
+   todas"}}.
+
+### Esqueleto de referencia
+
+> Ejemplo genérico — adaptar la sintaxis al lenguaje/framework real del proyecto.
+
+```
+// {{recurso}}.schema — ÚNICA fuente de verdad
+CreateXxxRequest = { /* campos de entrada */ }
+XxxResponse = { /* campos de salida */ }
+
+// {{recurso}}.controller — THIN
+handler create(req):
+    ctx = requestContext(req)
+    body = validate(CreateXxxRequest, req.body)   // ya validado por el pipe/middleware global
+    return service.create(ctx, body)
+
+// {{recurso}}.service — lógica + acceso a datos aislado
+function create(ctx, input):
+    return withTenant(ctx.tenantId, tx => {
+        // lógica + inserts; lanzar el error tipado del contrato ante regla de negocio
+    })
+```
+
+---
+
+## 3. Reglas por dimensión (cómo se hace cada cosa, sin excepción)
+
+| Dimensión | Regla |
+|---|---|
+| **Naming** | Endpoints {{CASING_ENDPOINTS}}. DB {{CASING_DB}}. Código {{CASING_CODIGO}}. {{IDIOMA_DE_NOMBRES_SI_APLICA: p.ej. "nombres de dominio en español, andamiaje técnico en inglés — justificar el criterio"}} |
+| **Datos** | {{REGLA_DE_DINERO}}. {{REGLA_DE_IDS}}. {{REGLA_DE_MULTITENANCY}} |
+| **Validación** | {{MECANISMO_DE_VALIDACION_EN_LA_FRONTERA}}. **Ojo con el fallo-abierto**: si el mecanismo de validación depende de un tipo específico (ej. un DTO generado) y el parámetro se tipa distinto (`interface`/`unknown`), puede dejar pasar el valor SIN VALIDAR, en silencio — si el framework tiene este riesgo, decilo acá explícitamente y agregá una guarda de CI que lo verifique. |
+| **Errores** | Se lanza el error tipado del contrato (`API.md §5`), nunca un error crudo del lenguaje ni un throw ad-hoc en el camino de request. |
+| **Tipos** | {{ESTRICTO_O_NO}}. Sin `any`/equivalente salvo en parsers de librerías externas, con comentario justificando. |
+| **Testing (TDD)** | Unit (lógica de dominio/servicios) + integración (DB real, {{aislamiento}}) + {{e2e_o_contract_si_aplica}}. Sin merge con tests/typecheck/lint/build en rojo. |
+| **Idempotencia** | Obligatoria en toda operación que crea un recurso cobrable o con efecto irreversible. |
+| **Paginación** | {{CURSOR_U_OFFSET}} — patrón único en todos los list endpoints. |
+
+---
+
+## 4. DEFINITION OF DONE (el gate — una pieza NO EXISTE hasta que TODO esto es verde)
+
+> Checklist obligatorio. El PR no se mergea si falta un ítem.
+
+- [ ] **Diseño respeta capas y el molde de §2.**
+- [ ] **Schema/validación** (request + response) definido y {{registrado_donde_aplique}}.
+- [ ] **Invariantes en la base** (constraints/FKs), no solo en la aplicación.
+- [ ] **Unit tests** (TDD RED→GREEN): lógica del service + ramas + casos de error.
+- [ ] **Integration test** (DB real): {{aislamiento_multitenant_si_aplica}} + comportamiento
+  real de datos.
+- [ ] **e2e/contract test** si aplica: la cadena completa, no solo la lógica en mock.
+- [ ] **Idempotencia** aplicada si crea recurso cobrable/irreversible.
+- [ ] **Errores** vía el contrato tipado; nada de `throw` crudo en el camino de request.
+- [ ] **Sin secretos en logs**; logger estructurado; cero `console.log`/`print`.
+- [ ] **Sin deuda introducida**: sin `TODO` huérfano, sin duplicación, sin workaround sin
+  registrar en `ROADMAP.md`.
+- [ ] **Docs actualizadas** si cambia comportamiento o arquitectura.
+- [ ] **`{{COMANDO_DE_VERIFY}}`** en verde en todos los paquetes tocados.
+- [ ] **PR < {{LIMITE_DE_LINEAS}} líneas** (o partido en cadena); conventional commit; pasa
+  el review (bot y/o humano).
+
+> Las capas de test **no son negociables**: un test unitario en verde no prueba el
+> contrato completo — prueba la lógica en aislamiento. Verde ≠ correcto.
+
+---
+
+## 5. Git y entregas
+
+- **Conventional Commits** (`feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`).
+  {{POLITICA_DE_ATRIBUCION_IA_SI_APLICA}}.
+- Una rama por feature; todo por PR; **PR < {{LIMITE_DE_LINEAS}} líneas** (si crece, se
+  parte en PRs encadenados).
+- {{POLITICA_DE_MERGE: squash/rebase}}. Pre-commit: bloquear secretos.
+
+## 6. Proceso (SDD)
+
+- Cada capability grande = un **SDD**: `propuesta → spec → diseño → tareas → apply →
+  verify → archive`. No todo cambio necesita SDD.
+- Los `docs/` se actualizan **antes** de construir (docs-first) y se mantienen
+  **consistentes** entre sí: una decisión cambia → se propaga a todos los docs afectados.
+- Cada sesión deja memoria persistente + tareas — la continuidad no depende de una sola
+  conversación.
+
+## 7. Rendimiento (no negociable a escala)
+
+- {{CAMINO_CRITICO}} nunca bloquea por una dependencia externa.
+- Sin N+1; índices por {{CLAVE_DE_PARTICIONADO_LOGICO: p.ej. tenant_id}}.
+- {{ESTRATEGIA_DE_NUMERACION_O_CONTADORES_SI_APLICA: evitar contador único como
+  cuello de botella a escala}}.
+
+## 8. Cómo se usa este documento
+
+- **Antes de escribir una pieza nueva**: leé §2 (molde) + §4 (DoD).
+- **Al revisar un PR**: el DoD §4 es el checklist de revisión.
+- **Si algo no encaja en el molde**: no lo fuerces en silencio — proponé un cambio a ESTE
+  documento primero. El estándar evoluciona por decisión explícita, no por drift.

@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  // NOTA: tsc acepta comentarios `//` en archivos tsconfig*.json (parser JSONC),
+  // así que este archivo es válido tal cual — no hace falta quitarlos para usarlo.
+  "compilerOptions": {
+    // ES2022 + moduleResolution "bundler": el default que asume que ALGO (Vite,
+    // esbuild, tsup, Next) empaqueta antes de correr en runtime. Si tu app es un
+    // proceso Node puro sin bundler (un backend NestJS servido con tsc, por
+    // ejemplo), sobreescribí "module"/"moduleResolution" a "NodeNext" en el
+    // tsconfig del paquete — no cambies el base, porque otros paquetes del
+    // monorepo sí pueden depender de un bundler.
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+
+    "strict": true,
+
+    // Sin esto, `array[i]` tiene tipo T, no `T | undefined` — TypeScript te deja
+    // acceder a un índice fuera de rango como si siempre existiera un valor ahí.
+    // Con el flag, CADA acceso por índice (arrays, Record, tuplas con índice
+    // dinámico) obliga a manejar el caso "no está". Es la diferencia entre
+    // descubrir un `undefined` inesperado en un test y descubrirlo en producción
+    // leyendo `.property` de él.
+    "noUncheckedIndexedAccess": true,
+
+    // Evita el bug clásico de override: renombrás un método en la clase base y el
+    // método de la subclase, que debía sobreescribirlo, se queda huérfano — sin
+    // este flag compila igual, con dos métodos que ya no tienen relación.
+    "noImplicitOverride": true,
+
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+
+    // Distingue "la propiedad existe con valor undefined" de "la propiedad no
+    // existe". Es más ruidoso en código que hace `delete obj.prop` o construye
+    // objetos parciales a mano — si tu equipo elige apagarlo, documentá el
+    // tradeoff en STANDARDS.md, no lo apagues en silencio.
+    "exactOptionalPropertyTypes": true,
+
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true
+  }
+}

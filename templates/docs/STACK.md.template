@@ -1,0 +1,112 @@
+<!-- ============================================================
+INSTRUCCIONES DE USO — BORRAR ESTE BLOQUE AL LLENAR EL DOCUMENTO
+
+STACK.md es el documento de decisiones técnicas. Formato OBLIGATORIO por
+cada decisión: contexto → decisión → por qué → alternativas descartadas.
+No es negociable simplificarlo a solo "decisión" — sin el "por qué" y las
+alternativas descartadas, dentro de seis meses alguien va a proponer
+"¿por qué no usamos X?" sobre una alternativa que ya se evaluó y se
+rechazó, y el tiempo se pierde dos veces.
+
+Por qué este formato específico:
+- Contexto: qué problema estaba resolviendo esta decisión — sin esto, la
+  decisión parece arbitraria en retrospectiva.
+- Decisión: la elección, en una frase clara, sin ambigüedad.
+- Por qué: los motivos, no un adjetivo ("es mejor"). Motivos verificables
+  o al menos explicados.
+- Alternativas descartadas: CADA una con su razón de descarte. Esto es lo
+  que evita re-litigar la misma decisión cada vez que cambia quien
+  pregunta.
+
+Cuando una decisión se cae (el proveedor que se daba por elegido dejó de
+existir, la versión que se eligió tuvo un problema) NO se borra el ADR:
+se anota la corrección con fecha, y se aclara qué parte del razonamiento
+original se sostiene y cuál no. Un ADR corregido con su historia vale más
+que uno reescrito como si siempre hubiera dicho lo correcto.
+
+Cada ADR es un cambio real de código: si la decisión todavía no se
+implementó, decilo explícitamente ("aspiracional, no implementado
+todavía") para que nadie asuma que ya existe.
+============================================================ -->
+
+# Stack y decisiones técnicas (ADRs) — {{NOMBRE_PROYECTO}}
+
+> Decisiones de arquitectura tecnológica, justificadas. Formato: **contexto → decisión →
+> por qué → alternativas descartadas.**
+
+---
+
+## TL;DR
+
+> Tabla de una fila por capa, para escanear en 30 segundos. El detalle (el ADR completo)
+> va abajo.
+
+| Capa | Elección | Alternativas descartadas |
+|---|---|---|
+| {{CAPA: p.ej. "Lenguaje backend"}} | **{{ELECCION}}** | {{ALTERNATIVAS_DESCARTADAS}} |
+| {{CAPA: p.ej. "Base de datos"}} | **{{ELECCION}}** | {{ALTERNATIVAS_DESCARTADAS}} |
+| {{CAPA: p.ej. "ORM"}} | **{{ELECCION}}** | {{ALTERNATIVAS_DESCARTADAS}} |
+| {{CAPA: p.ej. "Multi-tenancy"}} | **{{ELECCION}}** | {{ALTERNATIVAS_DESCARTADAS}} |
+| {{CAPA: p.ej. "Frontend"}} | **{{ELECCION}}** | {{ALTERNATIVAS_DESCARTADAS}} |
+| {{CAPA: p.ej. "Colas / async"}} | **{{ELECCION}}** | {{ALTERNATIVAS_DESCARTADAS}} |
+| {{CAPA: p.ej. "Monorepo / build"}} | **{{ELECCION}}** | {{ALTERNATIVAS_DESCARTADAS}} |
+| {{CAPA: p.ej. "Infra / deploy"}} | **{{ELECCION}}** | {{ALTERNATIVAS_DESCARTADAS}} |
+
+---
+
+## Decisiones detalladas (ADRs)
+
+### ADR-01 — {{TITULO: capa + elección}}
+
+**Contexto:** {{QUE_PROBLEMA_HABIA_QUE_RESOLVER}}
+
+**Decisión:** {{LA_ELECCION_EN_UNA_FRASE}}
+
+**Por qué:** {{MOTIVOS_VERIFICABLES_O_EXPLICADOS}}
+
+**Descartado:** {{ALTERNATIVA_1}} ({{RAZON_DEL_DESCARTE}}); {{ALTERNATIVA_2}}
+({{RAZON_DEL_DESCARTE}}).
+
+### ADR-02 — {{TITULO}}
+
+**Contexto:** {{...}}
+
+**Decisión:** {{...}}
+
+**Por qué:** {{...}}
+
+**Descartado:** {{...}}
+
+<!--
+> EJEMPLO COMPLETO (genérico, adaptar o borrar) — para copiar el formato:
+
+### ADR-03 — Base de datos: PostgreSQL + Row-Level Security
+
+**Contexto:** el producto es multitenant desde el día uno: múltiples clientes comparten
+la misma base, y una fuga de datos entre tenants es el peor incidente posible para este
+tipo de producto.
+
+**Decisión:** un único Postgres, aislamiento entre tenants por **Row-Level Security**
+(columna `tenant_id` + política `USING (tenant_id = current_tenant())`), con un rol de
+runtime sin `BYPASSRLS` y un rol de owner separado que solo corre migraciones.
+
+**Por qué:** RLS pone el aislamiento en el motor de base de datos, no en cada query de la
+aplicación — un desarrollador que olvida el filtro no puede fugar datos de otro tenant
+porque la base se lo impide. Además: transacciones ACID reales, JSONB para configuración
+flexible, y particionado disponible cuando el volumen lo pida.
+
+**Descartado:** schema-per-tenant por defecto (operacionalmente caro a miles de tenants —
+se reserva como opción para los clientes más grandes que lo justifiquen); base de datos
+documental sin transacciones multi-documento fuertes (el dominio necesita consistencia
+transaccional real, no eventual).
+-->
+
+---
+
+## Convenciones
+
+> Reglas transversales que no ameritan un ADR propio pero que todo el equipo debe conocer.
+
+- {{CONVENCION_1: p.ej. representación de dinero, formato de IDs}}
+- {{CONVENCION_2: p.ej. casing de DB, encoding}}
+- {{CONVENCION_3: p.ej. formato de commits, tamaño máximo de PR}}

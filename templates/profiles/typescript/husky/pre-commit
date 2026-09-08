@@ -1,0 +1,74 @@
+#!/usr/bin/env sh
+# Husky invoca los hooks con `sh` sin importar el shebang del archivo — re-exec en
+# bash para poder usar process substitution `< <(...)` en el loop NUL-safe de abajo.
+if [ -z "$BASH_VERSION" ]; then
+  exec bash "$0" "$@"
+fi
+
+# {{PROJECT_NAME}} — pre-commit hook
+#
+# Gate LOCAL rápido (~1 segundo): solo los archivos en stage. Deliberadamente NO
+# corre typecheck ni tests — son lentos, y un hook lento entrena a la gente a usar
+# `--no-verify` como hábito, que es peor que no tener hook (se pierde la
+# verificación Y la señal de que algo se está saltando). Eso corre completo en
+# pre-push.
+#
+# 1. Bloquea cualquier material criptográfico (claves, certificados) que se intente
+#    commitear — nunca deben viajar por Git, sino por el secret store del proyecto
+#    (Vault/OpenBao, secrets del CI, etc.).
+# 2. Corre Biome (lint + format) sobre los archivos staged vía lint-staged.
+#
+# Bypass de emergencia: git commit --no-verify (NO usar como hábito)
+
+echo "→ pre-commit: guarda de material criptográfico..."
+
+# diff-filter=ACMR cubre Add + Copy + Modify + Rename — evita bypass por
+# rename/modify de un blob ya staged. Se comprueba por EXTENSIÓN y por CONTENIDO
+# (defensa en profundidad: una extensión puede cambiarse, un header PEM no).
+# NUL-terminated I/O para soportar paths con espacios o saltos de línea.
+SECRETS_STAGED_BY_EXT=$(git diff --cached --name-only --diff-filter=ACMR -z \
+  | tr '\0' '\n' \
+  | grep -E '\.(p12|pem|key|pfx|jks|crt|cer)$' \
+  || true)
+
+# Escanea el CONTENIDO staged buscando headers PEM (claves privadas + certificados).
+# Se saltean archivos >1MB (umbral arbitrario: un .p12/.pem real es típicamente
+# <100KB; este corte evita leer artifacts binarios grandes en cada commit) y
+# extensiones binarias conocidas que nunca van a contener texto PEM.
+SECRETS_STAGED_BY_CONTENT=""
+PEM_HEADER_REGEX='^-----BEGIN (RSA |EC |DSA |OPENSSH |ENCRYPTED |)?(PRIVATE KEY|CERTIFICATE)-----'
+MAX_SCAN_BYTES=1048576
+
+while IFS= read -r -d '' f; do
+  case "$f" in
+    pnpm-lock.yaml|*.json|*.snap|*.png|*.jpg|*.jpeg|*.gif|*.pdf|*.ico|*.woff*) continue ;;
+  esac
+  size=$(git cat-file -s ":$f" 2>/dev/null || printf 0)
+  [ -z "$size" ] && continue
+  [ "$size" -gt "$MAX_SCAN_BYTES" ] && continue
+  if git show ":$f" 2>/dev/null | grep -qE "$PEM_HEADER_REGEX"; then
+    SECRETS_STAGED_BY_CONTENT="${SECRETS_STAGED_BY_CONTENT}${f}
+"
+  fi
+done < <(git diff --cached --name-only --diff-filter=ACMR -z)
+
+if [ -n "$SECRETS_STAGED_BY_EXT" ] || [ -n "$SECRETS_STAGED_BY_CONTENT" ]; then
+  echo "🚨 BLOQUEO: estás staging material criptográfico — no va a Git."
+  if [ -n "$SECRETS_STAGED_BY_EXT" ]; then
+    echo "  Por extensión sensible:"
+    printf "%s\n" "$SECRETS_STAGED_BY_EXT" | sed 's|.*/||' | sed 's|^|    - |'
+  fi
+  if [ -n "$SECRETS_STAGED_BY_CONTENT" ]; then
+    echo "  Por header PEM/CERT en el contenido:"
+    printf "%s" "$SECRETS_STAGED_BY_CONTENT" | sed 's|.*/||' | sed 's|^|    - |'
+  fi
+  echo
+  echo "Si tu proyecto tiene un caso legítimo de fixture de prueba (certificado"
+  echo "autofirmado, sin valor productivo), agregá una excepción explícita y"
+  echo "revisada por el equipo — nunca ampliada sin revisión."
+  echo "Bypass solo en emergencia: git commit --no-verify"
+  exit 1
+fi
+
+echo "→ pre-commit: biome sobre los archivos staged..."
+pnpm exec lint-staged

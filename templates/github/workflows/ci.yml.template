@@ -1,0 +1,292 @@
+# ==============================================================================
+# CI — plantilla genérica del kit.
+#
+# TRAE DOS PERFILES. Elegí uno al bootstrapear el proyecto y BORRÁ el otro
+# entero (los bloques están delimitados con comentarios `# --- PERFIL … ---`
+# / `# --- FIN PERFIL … ---`). Dejar los dos vivos produce un workflow que no
+# corre: hay nombres de job duplicados y pasos que referencian herramientas
+# que el proyecto no instaló.
+#
+# EL PRINCIPIO QUE NO SE NEGOCIA
+# ───────────────────────────────
+# El script local `verify` (package.json → `scripts.verify`, o el equivalente
+# `make verify`/`uv run verify` en Python) tiene que correr EXACTAMENTE lo que
+# corre acá, EN EL MISMO ORDEN. `templates/guardrails/check-ci-parity.mjs` lo
+# hace un candado: falla nombrando el paso que falta o el par que quedó en el
+# orden equivocado. Ver `templates/github/README.md` para el porqué completo.
+#
+# CADA VEZ QUE SUMÉS UN PASO ACÁ, SUMALO TAMBIÉN A `verify` — en el mismo
+# commit. El guardrail te lo va a recordar si te olvidás, pero no esperes a
+# que te lo recuerde: es más barato acordarse antes.
+#
+# Placeholders `{{...}}` a completar por el bootstrap:
+#   {{PROJECT_NAME}}          nombre del proyecto (para tags, resúmenes)
+#   {{CI_RUNNER_VAR}}         nombre de la variable de repo para el runner
+#                             (default sugerido: CI_RUNNER)
+#   {{PACKAGE_MANAGER}}       pnpm | npm | yarn (perfil TypeScript)
+#   {{PACKAGE_MANAGER_VERSION}}
+#   {{NODE_VERSION}}          versión de Node (perfil TypeScript)
+#   {{PYTHON_VERSION}}        versión de Python (perfil Python, si no la fija uv)
+#   {{DB_IMAGE}}              imagen del motor de base de datos para el job de integración
+#   {{DB_NAME}} / {{DB_USER}} / {{DB_PASSWORD}}
+#   {{HEALTH_CMD}}            comando de healthcheck del contenedor de base de datos
+#   {{INTEGRATION_TEST_CMD}}  comando que corre la suite de integración
+#   {{COVERAGE_TEST_CMD}}     comando que corre tests + cobertura
+#   {{AUDIT_CMD}}             comando de auditoría de dependencias (ver check-audit.mjs)
+# ==============================================================================
+
+name: CI
+
+on:
+  pull_request:
+    # Sin filtro de branches → corre en TODOS los PRs, incluidos los
+    # encadenados cuyo target es un feature/tracker branch y no main.
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ============================================================================
+  # --- PERFIL TYPESCRIPT --- (pnpm/npm workspace, Node)
+  # Si el proyecto es Python, BORRÁ este job entero y andá al que dice
+  # "--- PERFIL PYTHON ---" más abajo.
+  # ============================================================================
+  quality:
+    name: lint · typecheck · test · build
+    runs-on: ${{ vars.{{CI_RUNNER_VAR}} || 'ubuntu-24.04' }}
+    timeout-minutes: 15
+    # Sólo si el proyecto conecta a una base real durante el smoke de arranque
+    # (DI que instancia un repositorio real, no un mock). Si no aplica, borrá
+    # este bloque `services` — un service container que nadie usa sólo demora
+    # el job.
+    services:
+      postgres:
+        image: {{DB_IMAGE}}
+        env:
+          POSTGRES_USER: {{DB_USER}}
+          POSTGRES_PASSWORD: {{DB_PASSWORD}}
+          POSTGRES_DB: {{DB_NAME}}
+        ports:
+          - 5432
+        options: >-
+          --health-cmd "{{HEALTH_CMD}}"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node {{NODE_VERSION}}
+        uses: actions/setup-node@v7
+        with:
+          node-version: "{{NODE_VERSION}}"
+
+      - name: Setup {{PACKAGE_MANAGER}}
+        uses: pnpm/action-setup@v6
+        with:
+          version: "{{PACKAGE_MANAGER_VERSION}}"
+          run_install: false
+
+      - name: Habilitar cache de {{PACKAGE_MANAGER}} (2da pasada de setup-node)
+        uses: actions/setup-node@v7
+        with:
+          node-version: "{{NODE_VERSION}}"
+          cache: {{PACKAGE_MANAGER}}
+
+      - name: Install
+        run: {{PACKAGE_MANAGER}} install --frozen-lockfile
+
+      # PRIMER PASO, SIEMPRE. Barato y evita que el resto del job corra en
+      # falso: si `verify` y este workflow se desincronizaron, mejor saberlo
+      # acá que confiar en un `verify` local que ya no significa lo mismo.
+      - name: Paridad entre `verify` y este workflow
+        run: {{PACKAGE_MANAGER}} run check:ci-parity
+
+      - name: Pares de versiones que deben coincidir
+        run: {{PACKAGE_MANAGER}} run check:versions
+
+      # El linter puede descartar su config en silencio y seguir con los
+      # defaults, dejando el lint verde sin comprobar casi nada. Ver
+      # `templates/guardrails/check-lint-config.mjs`.
+      - name: El linter está leyendo nuestra configuración
+        run: {{PACKAGE_MANAGER}} run check:lint-config
+
+      # Renombrar o mover un archivo de la raíz deja Dockerfiles copiando algo
+      # que ya no existe, y eso no lo ve ningún test: la imagen se construye
+      # en OTRO workflow (`build-push.yml`).
+      - name: Los Dockerfile copian archivos que existen
+        run: {{PACKAGE_MANAGER}} run check:dockerfiles
+
+      # `verify` corre `test:coverage` (nunca `test` a secas). Un paquete cuya
+      # suite se llame distinto queda escrito y jamás ejecutado por CI, sin un
+      # solo error. Ver `templates/guardrails/check-test-tasks.mjs`.
+      - name: Todo archivo de test lo alcanza una tarea que `verify` corre
+        run: {{PACKAGE_MANAGER}} run check:test-tasks
+
+      # El linter en modo CI reporta y falla — NO auto-corrige. Un linter que
+      # se auto-corrige no es un gate.
+      - name: Lint (sin auto-fix)
+        run: {{PACKAGE_MANAGER}} run lint
+
+      - name: Typecheck
+        run: {{PACKAGE_MANAGER}} run typecheck
+
+      - name: Test + cobertura
+        run: {{COVERAGE_TEST_CMD}}
+
+      - name: Build
+        run: {{PACKAGE_MANAGER}} run build
+
+      # Si el proyecto migra un esquema antes de arrancar, migrá ACÁ, antes
+      # del smoke de arranque — no después. El orden se declara y se comprueba
+      # en `check-ci-parity.mjs` (`ORDEN_EXIGIDO`).
+      # - name: Migrar esquema
+      #   run: {{PACKAGE_MANAGER}} run db:migrate
+
+      # SMOKE REAL DE ARRANQUE, NO UN TEST UNITARIO. Arranca el artefacto de
+      # verdad y le pega a una ruta que USA el provider inyectado — no sólo a
+      # `/healthz`. Un framework de DI puede arrancar "sano" (el módulo
+      # resuelve) y devolver 500 en la primera petición real si el bundler no
+      # emitió los metadatos de tipos que la DI necesita. Ver el smoke de
+      # `build-push.yml.template` para la versión que corre contra la IMAGEN.
+      # - name: El artefacto arranca y su DI resuelve de verdad
+      #   run: {{PACKAGE_MANAGER}} run check:humo-arranque
+
+      # Código muerto y dependencias sin usar. Opcional pero barato.
+      # - name: Código muerto y dependencias sin usar
+      #   run: {{PACKAGE_MANAGER}} run knip
+  # --- FIN PERFIL TYPESCRIPT ---
+
+  # ============================================================================
+  # --- PERFIL PYTHON --- (uv, pytest, ruff, mypy)
+  # Si el proyecto es TypeScript, BORRÁ este job entero (usá el de arriba).
+  # ============================================================================
+  # calidad:
+  #   name: lint · tipos · tests · cobertura
+  #   runs-on: ${{ vars.{{CI_RUNNER_VAR}} || 'ubuntu-24.04' }}
+  #   timeout-minutes: 15
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #
+  #     - name: Instalar uv
+  #       uses: astral-sh/setup-uv@v5
+  #       with:
+  #         enable-cache: true
+  #
+  #     - name: Sincronizar dependencias
+  #       run: uv sync --frozen
+  #
+  #     - name: Paridad entre `verify` y este workflow
+  #       run: uv run python scripts/check_ci_parity.py
+  #
+  #     - name: Lint (ruff)
+  #       run: uv run ruff check src tests
+  #
+  #     - name: Tipos (mypy)
+  #       run: uv run mypy src
+  #
+  #     - name: Suite completa + umbral de cobertura
+  #       run: uv run pytest -q --cov-fail-under=85
+  #
+  #     # Fitness functions: reglas duras que el linter no puede expresar
+  #     # (ej. "el dominio no importa infraestructura"). Ver
+  #     # `templates/guardrails/fitness/README.md`.
+  #     - name: Fitness functions de arquitectura
+  #       run: uv run pytest tests/arquitectura -q
+  # --- FIN PERFIL PYTHON ---
+
+  # ── Integración contra base de datos REAL ──────────────────────────────────
+  #
+  # Job aparte y bloqueante. Aparte porque necesita infraestructura y tarda
+  # más; bloqueante porque acá se prueba lo que un mock no puede probar — por
+  # ejemplo, aislamiento entre tenants (RLS): una política mal escrita se ve
+  # IDÉNTICA contra un mock.
+  integracion:
+    name: integración · aislamiento entre tenants (base real)
+    runs-on: ${{ vars.{{CI_RUNNER_VAR}} || 'ubuntu-24.04' }}
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: {{DB_IMAGE}}
+        env:
+          POSTGRES_USER: {{DB_USER}}
+          POSTGRES_PASSWORD: {{DB_PASSWORD}}
+          POSTGRES_DB: {{DB_NAME}}
+        ports:
+          - 5432
+        options: >-
+          --health-cmd "{{HEALTH_CMD}}"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node {{NODE_VERSION}}
+        uses: actions/setup-node@v7
+        with:
+          node-version: "{{NODE_VERSION}}"
+
+      - name: Setup {{PACKAGE_MANAGER}}
+        uses: pnpm/action-setup@v6
+        with:
+          version: "{{PACKAGE_MANAGER_VERSION}}"
+          run_install: false
+
+      - name: Install
+        run: {{PACKAGE_MANAGER}} install --frozen-lockfile
+
+      - name: Migrar esquema
+        run: {{PACKAGE_MANAGER}} run db:migrate
+
+      # `--sequence.shuffle` (o el equivalente del test runner) NO es
+      # decoración: convierte "los tests no dependen de un orden" en una
+      # PROPIEDAD medida, no en un supuesto. Un acoplamiento de orden se puede
+      # cerrar a mano una vez y volver la semana siguiente sin que nada lo
+      # note — salvo que el orden se barajé en cada corrida.
+      - name: Tests de integración (con el orden barajado)
+        run: {{INTEGRATION_TEST_CMD}}
+
+  # ── Auditoría de dependencias ───────────────────────────────────────────────
+  #
+  # Job separado y bloqueante a propósito: un fallo de auditoría tiene que
+  # verse por sí solo, no confundido con un test roto.
+  audit:
+    name: auditoría de dependencias (high/critical)
+    runs-on: ${{ vars.{{CI_RUNNER_VAR}} || 'ubuntu-24.04' }}
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node {{NODE_VERSION}}
+        uses: actions/setup-node@v7
+        with:
+          node-version: "{{NODE_VERSION}}"
+
+      - name: Setup {{PACKAGE_MANAGER}}
+        uses: pnpm/action-setup@v6
+        with:
+          version: "{{PACKAGE_MANAGER_VERSION}}"
+          run_install: false
+
+      - name: Install
+        run: {{PACKAGE_MANAGER}} install --frozen-lockfile
+
+      # Mismo script que corre `verify` en local, a propósito: una sola
+      # implementación del umbral. La diferencia la hace `CI=1`: acá un
+      # registry que no contesta ES un fallo (falla cerrado); en local, sólo
+      # avisa. Ver `templates/guardrails/check-audit.mjs`.
+      - name: check:audit (bloquea en high y critical)
+        run: {{AUDIT_CMD}}
+        env:
+          CI: "1"

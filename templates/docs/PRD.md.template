@@ -1,0 +1,92 @@
+<!-- ============================================================
+INSTRUCCIONES DE USO — BORRAR ESTE BLOQUE AL LLENAR EL DOCUMENTO
+
+Este documento responde UNA pregunta: ¿qué problema resolvemos, para quién,
+y qué hay que construir para resolverlo? No es el lugar para decisiones de
+arquitectura (→ ARQUITECTURA.md) ni de stack (→ STACK.md): si te encontrás
+escribiendo "por qué Postgres" acá, referenciá STACK.md en vez de repetirlo.
+
+Por qué cada sección existe:
+- Personas: sin nombrar a quién servís, "requisito" es una palabra vacía —
+  cualquier feature se puede justificar con "alguien lo va a querer".
+- Casos de uso ANTES que requisitos funcionales: los RF derivan de un caso
+  de uso real. Un RF que no viene de ningún caso de uso es una feature
+  especulativa.
+- Fuera de alcance: tan importante como el alcance. Sin esta sección, el
+  scope creep se cuela porque "nadie dijo que no".
+- Métricas de éxito: un PRD sin métricas no se puede declarar cumplido —
+  solo "terminado" en la sensación de quien lo escribió.
+============================================================ -->
+
+# PRD — {{NOMBRE_PROYECTO}}
+
+> Requisitos de producto: a quién servimos, qué problema resolvemos, casos de uso y
+> requisitos (funcionales y no funcionales). Coherente con `BLUEPRINT.md`, `ARQUITECTURA.md`
+> y `ROADMAP.md` — si una decisión de alcance cambia acá, se propaga a esos tres.
+
+---
+
+## 1. Visión
+
+{{VISION_EN_2_3_LINEAS: qué es el producto, para quién, y qué lo hace ganar frente a la
+alternativa que la gente usa hoy.}}
+
+## 2. Problema
+
+1. {{PROBLEMA_1_CON_EVIDENCIA}}
+2. {{PROBLEMA_2}}
+3. {{PROBLEMA_3}}
+
+## 3. Personas
+
+> Cada persona necesita un dolor concreto, no un rol genérico. "Administrador" no dice
+> nada; "administrador que hoy ve datos de ayer y no puede confiar en el stock" sí.
+
+| Persona | Necesidad principal | Dolor |
+|---|---|---|
+| {{PERSONA_1}} | {{NECESIDAD}} | {{DOLOR_ACTUAL}} |
+| {{PERSONA_2}} | {{NECESIDAD}} | {{DOLOR_ACTUAL}} |
+
+## 4. Casos de uso clave (épicas)
+
+> Un caso de uso es un flujo de punta a punta, no una feature aislada. Nombralo por la
+> acción del usuario ("vender", "conciliar", "emitir"), no por el módulo técnico.
+
+### 4.1 {{NOMBRE_CASO_DE_USO}}
+{{FLUJO_PASO_A_PASO_EN_UNA_LINEA_O_DOS}}
+
+### 4.2 {{NOMBRE_CASO_DE_USO}}
+{{...}}
+
+## 5. Requisitos funcionales (por módulo)
+
+> Agrupá por módulo/bounded context, no como lista plana — una lista plana de 80 ítems no
+> se puede auditar contra el roadmap.
+
+- **{{MODULO_1}}:** {{REQUISITOS_CLAVE_DEL_MODULO}}
+- **{{MODULO_2}}:** {{...}}
+
+## 6. Requisitos no funcionales
+
+> Cada NFR tiene que ser medible o verificable — "debe ser rápido" no es un requisito, es
+> un deseo. "Latencia p95 < 200ms" sí lo es.
+
+- **Disponibilidad:** {{...}}
+- **Latencia:** {{...}}
+- **Escala:** {{...}}
+- **Integridad:** {{...}}
+- **Seguridad:** ver `SEGURIDAD.md`.
+- **Cumplimiento normativo:** {{SI_APLICA}}
+- **Calidad:** cero deuda técnica acumulada — ver `STANDARDS.md`.
+
+## 7. Fuera de alcance (por ahora)
+
+> Explícito, con destino: "fuera de alcance para siempre" y "fuera de alcance hasta la fase
+> X" son cosas distintas — decilo.
+
+{{ITEMS_FUERA_DE_ALCANCE_CON_SU_DESTINO}}
+
+## 8. Métricas de éxito
+
+- {{METRICA_1_MEDIBLE}}
+- {{METRICA_2_MEDIBLE}}

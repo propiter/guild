@@ -1,0 +1,52 @@
+{
+  "name": "{{PROJECT_NAME}}",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@10.32.1",
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=10"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "clean": "turbo run clean && rm -rf node_modules",
+
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+
+    "typecheck": "turbo run typecheck",
+
+    "test": "turbo run test",
+    "test:coverage": "turbo run test:coverage",
+    "test:integration": "turbo run test:integration --concurrency=1",
+    "test:watch": "turbo run test:watch",
+
+    "db:up": "bash docker/scripts/db-up.sh docker/docker-compose.dev.yml db db-test redis",
+    "db:down": "docker compose -f docker/docker-compose.dev.yml down",
+    "db:reset": "bash docker/scripts/db-reset.sh docker/docker-compose.dev.yml db db-test redis",
+    "db:wait": "bash docker/scripts/wait-for-healthy.sh docker/docker-compose.dev.yml db db-test redis",
+    "db:migrate": "{{COMANDO_DE_MIGRACION: lo define la herramienta de migraciones elegida en la fase 2}}",
+
+    "audit": "pnpm audit --audit-level=high --prod",
+
+    "check:ci-parity": "node scripts/check-ci-parity.mjs",
+
+    "verify": "pnpm check:ci-parity && pnpm lint && pnpm typecheck && pnpm test:coverage && pnpm build && pnpm db:up && pnpm test:integration && pnpm audit",
+
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.11",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.2.11",
+    "turbo": "^2.10.9",
+    "typescript": "^5.7.2"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx,json,jsonc,md,mdx,yml,yaml,css,scss,html}": [
+      "biome check --write --no-errors-on-unmatched"
+    ]
+  }
+}

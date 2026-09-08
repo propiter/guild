@@ -1,0 +1,107 @@
+# ==============================================================================
+# {{PROJECT_NAME}} — imagen de producción
+#
+# Build context = raíz del monorepo:
+#   docker build -f Dockerfile -t {{IMAGE_NAME}}:{{TAG}} .
+# ==============================================================================
+
+# syntax=docker/dockerfile:1.7-labs
+
+ARG NODE_VERSION=22-alpine
+ARG PNPM_VERSION=10.32.1
+
+# ---- Base: pnpm vía corepack, nada más ----
+FROM node:${NODE_VERSION} AS base
+ARG PNPM_VERSION
+RUN apk add --no-cache libc6-compat \
+ && corepack enable \
+ && corepack prepare pnpm@${PNPM_VERSION} --activate
+WORKDIR /repo
+
+# ---- Build: instala, compila ----
+FROM base AS build
+# Manifiestos primero para cachear el paso de install: mientras no cambien los
+# package.json ni el lockfile, Docker reusa esta capa aunque cambie el código.
+# `--parents` (syntax 1.7-labs) preserva la estructura de carpetas y cubre TODOS
+# los paquetes por glob — ajustá los globs a los contenedores reales de tu
+# `pnpm-workspace.yaml` (apps/*, packages/*, etc.). Una lista explícita de paquetes
+# en vez de un glob por contenedor se desincroniza el día que alguien agrega un
+# paquete nuevo y se olvida de sumarlo acá.
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json .npmrc ./
+COPY --parents apps/*/package.json packages/*/package.json ./
+
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
+    pnpm install --frozen-lockfile --filter {{APP_PACKAGE_NAME}}... --ignore-scripts
+
+COPY tsconfig.base.json turbo.json biome.jsonc ./
+COPY packages packages
+COPY apps/{{APP_DIR}} apps/{{APP_DIR}}
+
+# `--filter {{APP_PACKAGE_NAME}}...` (con los tres puntos) construye la app Y SUS
+# dependencias de workspace, en orden topológico.
+RUN pnpm --filter {{APP_PACKAGE_NAME}}... build
+
+# ── LA PODA, Y NO ES POR EL TAMAÑO ──────────────────────────────────────────
+# Sin podar, la imagen final llevaría TODAS las devDependencies compiladas —
+# el compilador de TypeScript, el bundler, el test runner, el linter. Además del
+# peso (cientos de MB de diferencia, medido en proyectos reales), es un problema
+# de seguridad: el único gate de vulnerabilidades suele ser `pnpm audit --prod`
+# (excluye devDependencies), así que una imagen que SÍ las lleva está auditando
+# un conjunto de dependencias distinto del que en verdad despacha. Un audit en
+# verde que no mira lo que la imagen contiene es un falso verde con fecha de
+# vencimiento.
+#
+# Dos pasos, y en este orden — medido en producción, no por estilo:
+#   1. `install --prod` reescribe los árboles de symlinks del workspace dejando
+#      solo dependencias de producción. Por sí solo NO reduce el tamaño: el store
+#      virtual (`node_modules/.pnpm`) sigue entero.
+#   2. `prune --prod` recolecta ese store. Por sí solo ROMPE la imagen si corre
+#      antes del paso 1: vacía `node_modules` de la app y el runtime muere con
+#      `ERR_MODULE_NOT_FOUND`.
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
+    pnpm install --frozen-lockfile --filter {{APP_PACKAGE_NAME}}... --ignore-scripts --prod \
+ && pnpm prune --prod --ignore-scripts
+
+# ---- Runtime: solo lo que hace falta para correr ----
+FROM base AS runtime
+ENV NODE_ENV=production
+# El puerto se declara UNA vez acá y el HEALTHCHECK lo lee de `process.env`, nunca
+# como número fijo — un HEALTHCHECK con el puerto hardcodeado queda mintiendo el
+# día que alguien cambia `PORT` en runtime sin tocar el Dockerfile.
+ENV PORT=3000
+
+COPY --from=build --chown=node:node /repo /repo
+WORKDIR /repo/apps/{{APP_DIR}}
+
+# El proceso no necesita root. Un servicio expuesto a la red no corre como root
+# para arrancar un servidor HTTP.
+USER node
+
+EXPOSE ${PORT}
+
+# ── HEALTHCHECK: apunta a LIVENESS (`/health`), NUNCA a readiness (`/ready`) ──
+#
+# Un HEALTHCHECK que falla tiene una sola consecuencia posible: el orquestador
+# REINICIA el proceso. Por eso solo puede responder una pregunta — "¿hay que
+# reiniciarme?" — y esa pregunta NO puede depender de si la base de datos o una
+# cola externa están arriba: reiniciar el proceso no arregla una base caída, tira
+# las conexiones que sí funcionaban, y en una caída real de infraestructura
+# reinicia en bucle TODAS las instancias a la vez.
+#
+# `/health` (liveness) no hace I/O: contesta 200 mientras el proceso esté vivo y
+# el framework haya terminado de levantar. `/ready` (readiness) SÍ hace I/O
+# (prueba la conexión real a DB/cola) y es lo que un balanceador consulta para
+# decidir si enruta tráfico — nunca para reiniciar. Si tu app no separa estos dos
+# endpoints todavía, es la primera duda a resolver antes de cablear este
+# HEALTHCHECK contra cualquier endpoint que toque infraestructura externa.
+#
+# Valida el CUERPO de la respuesta, no solo el código HTTP: un 200 servido por un
+# proxy equivocado o un servicio distinto en el mismo puerto no es lo mismo que
+# tu proceso respondiendo con la forma esperada.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:'+process.env.PORT+'/health').then(r=>r.json()).then(b=>process.exit(b.status==='ok'?0:1)).catch(()=>process.exit(1))"
+
+CMD ["node", "--enable-source-maps", "dist/main.js"]
+
+LABEL org.opencontainers.image.title="{{PROJECT_NAME}}" \
+      org.opencontainers.image.description="{{PROJECT_DESCRIPTION}}"
