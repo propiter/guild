@@ -24,41 +24,38 @@ Los cuatro comparten una columna, `craft-core`, y **las leyes del gremio**.
 
 ## Instalación
 
-```bash
-git clone <url> guild && cd guild
-./install.sh
-```
-
-Un comando instala los 11 skills, los 42 oficios y los 31 comandos en Claude Code —y en OpenCode
-y Cursor si los tenés—. Idempotente, sin sudo, nada en segundo plano.
-
-```bash
-./install.sh --dry-run     # ver qué haría, sin tocar nada
-./install.sh --uninstall   # quitar lo que puso (settings y perfil de shell no se tocan)
-```
-
-**Elegís qué instala** (por defecto, todo):
-
-| Flag | Efecto |
-|---|---|
-| `--only=landing,system` | Solo esos pipelines (de `landing app system security`) |
-| `--no-impeccable` | No traer Impeccable (motor estético de landing/app) |
-| `--no-firecrawl` | No configurar Firecrawl (research de landing) |
-| `--no-gentle-ai` | NO correr el instalador de [Gentle AI](https://github.com/Gentleman-Programming/gentle-ai) (por defecto **sí** se corre) |
-| `--help` | Ver todo |
-
-**Dependencias externas** — el gremio no las esconde:
-
-- **Impeccable** ([`pbakaus/impeccable`](https://github.com/pbakaus/impeccable), MIT) — se copia. Motor estético de landing/app.
-- **Gentle AI** ([`Gentleman-Programming/gentle-ai`](https://github.com/Gentleman-Programming/gentle-ai)) — memoria persistente + SDD + skills. NO se copia: el instalador corre su comando oficial **por defecto**. Es código de un tercero que reconfigura tu entorno; pasá `--no-gentle-ai` para saltarlo.
-
-Cuando el repo esté en GitHub, también:
+Un comando. Nada que clonar, nada que configurar:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/propiter/guild/main/install.sh | bash
 ```
 
----
+Instala **todo** —los cuatro pipelines, Impeccable y Gentle AI— en Claude Code, y también en
+OpenCode y Cursor si los tenés. Idempotente, sin sudo, nada en segundo plano. Listo para usar.
+
+<details>
+<summary>Instalar solo una parte (opcional)</summary>
+
+Por defecto se instala todo. Si querés menos, el mismo comando acepta opciones:
+
+```bash
+# solo el pipeline de sistema, sin Impeccable
+curl -fsSL https://raw.githubusercontent.com/propiter/guild/main/install.sh | bash -s -- --only=system --no-impeccable
+```
+
+| Opción | Efecto |
+|---|---|
+| `--only=landing,system` | Solo esos pipelines (de `landing app system security`) |
+| `--no-impeccable` | Sin Impeccable (motor estético de landing/app) |
+| `--no-gentle-ai` | Sin Gentle AI (memoria + SDD) |
+| `--no-firecrawl` | Sin el aviso de Firecrawl |
+| `--uninstall` | Quitar lo que instaló |
+| `--help` | Ver todo |
+
+**Qué trae de afuera:** [Impeccable](https://github.com/pbakaus/impeccable) (MIT, se copia) y
+[Gentle AI](https://github.com/Gentleman-Programming/gentle-ai) (se corre su instalador oficial).
+Ambos vienen por defecto; se saltan con su flag.
+</details>
 
 ## Las leyes del gremio
 
