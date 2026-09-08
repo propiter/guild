@@ -81,7 +81,7 @@ LANDING_ROLES="surveyor cartographer strategist draughtsman wordsmith stylist wr
 APP_ROLES="prospector ethnographer wayfinder artificer framer envoy joiner steward conductor lapidary magistrate examiner renovator"
 SYSTEM_ROLES="scout architect quartermaster archivist codifier foreman herald navigator mason inspector smith"
 SECURITY_ROLES="sentinel breaker warden locksmith"
-DELIVERY_ROLES="appraiser finisher purser"
+DELIVERY_ROLES="appraiser finisher proctor purser"
 
 role_pipeline() { for r in $LANDING_ROLES; do [ "$1" = "$r" ] && { echo landing; return; }; done
   for r in $APP_ROLES; do [ "$1" = "$r" ] && { echo app; return; }; done

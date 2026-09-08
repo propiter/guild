@@ -76,11 +76,12 @@ cero gaps, cero bugs, cero parches, todo de raíz.
 |---|---|---|
 | `appraiser` | diagnóstico | Inventaría cada rastro de IA y cada hueco de entrega, con evidencia. READ-ONLY |
 | `finisher` | limpieza | Borra de raíz en olas verificadas: debug, código muerto, nombres, duplicación, formato |
+| `proctor` | prueba | Pone el producto real a prueba: suite completa, navegación con Playwright, gate visual, copy |
 | `purser` | entrega | La puerta: firma que está listo para el cliente, con la prueba de arrancar desde un clone limpio |
 
 ---
 
 **
 
-**45 oficios.** Nombres únicos en todo el gremio — dos oficios nunca comparten nombre, porque los
+**46 oficios.** Nombres únicos en todo el gremio — dos oficios nunca comparten nombre, porque los
 agentes viven en un solo espacio (`~/.claude/agents/`).

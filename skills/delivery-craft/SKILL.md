@@ -1,6 +1,6 @@
 ---
 name: delivery-craft
-description: "Trigger: dejar un producto listo para entregar al cliente — 'limpiá el producto para entregar', 'dejalo profesional', 'que no parezca hecho con IA', 'está listo para el cliente', 'sacá los console.log/logs de debug', 'código muerto', 'revisá que todo esté bien nombrado', 'preparar la entrega', 'code cleanup final' — el paso FINAL de cualquier pipeline del gremio, agnóstico del lenguaje (TS, Python, Go, lo que sea): toma un producto ya construido —por lo general con ayuda de IA— y borra todo rastro de que fue 'hecho con IA' y todo residuo que no debería llegar a producción. Tres oficios en orden: appraiser diagnostica delivery-readiness inventariando CADA rastro de IA (console.log, comentarios que narran lo obvio, código muerto, TODOs huérfanos, dependencias sin usar, placeholders, nombres perezosos, números mágicos, catch vacíos, secretos commiteados) y CADA hueco de entrega (README desacoplado de la realidad, .env.example incompleto, build/lint/test rotos) con evidencia ruta:línea, puntúa, y es READ-ONLY; finisher limpia de RAÍZ en olas verificadas —red de seguridad primero, un commit por ola, nunca borra sin prueba de que no se usa—; purser firma la entrega o la rechaza, con la prueba dura de arrancar desde un clone limpio. No rediseña UI ni decide arquitectura —eso es trabajo de app-craft/landing-craft— es la higiene final de cualquier entrega."
+description: "Trigger: dejar un producto listo para entregar al cliente — 'limpiá el producto para entregar', 'dejalo profesional', 'que no parezca hecho con IA', 'está listo para el cliente', 'sacá los console.log/logs de debug', 'código muerto', 'revisá que todo esté bien nombrado', 'preparar la entrega', 'code cleanup final' — el paso FINAL de cualquier pipeline del gremio, agnóstico del lenguaje (TS, Python, Go, lo que sea): toma un producto ya construido —por lo general con ayuda de IA— y borra todo rastro de que fue 'hecho con IA' y todo residuo que no debería llegar a producción. Cuatro oficios en orden: appraiser diagnostica delivery-readiness inventariando CADA rastro de IA (console.log, comentarios que narran lo obvio, código muerto, TODOs huérfanos, dependencias sin usar, placeholders, nombres perezosos, números mágicos, catch vacíos, secretos commiteados) y CADA hueco de entrega (README desacoplado de la realidad, .env.example incompleto, build/lint/test rotos) con evidencia ruta:línea, puntúa, y es READ-ONLY; finisher limpia de RAÍZ en olas verificadas —red de seguridad primero, un commit por ola, nunca borra sin prueba de que no se usa—; proctor prueba el producto REAL corriendo (no mocks) — suite completa, cada journey con Playwright, el gate visual delegado en design-review-loop, barrido de copy — y da GO/NO-GO; purser firma la entrega o la rechaza, con la prueba dura de arrancar desde un clone limpio. No rediseña UI ni decide arquitectura —eso es trabajo de app-craft/landing-craft— es la higiene final de cualquier entrega."
 license: Apache-2.0
 metadata:
   author: propiter
@@ -32,11 +32,14 @@ arquitectura de componentes, estados faltantes, accesibilidad, motion, conversi�
 específicos de frontend — necesitan Playwright, necesitan renderizar la pantalla, necesitan juzgar
 si el producto SE VE y SE USA bien. Esa es la remediación de UI.
 
-`delivery-craft` no juzga nada de eso — no tiene ni necesita Playwright. Es la capa de higiene
-final que corre DESPUÉS, sobre **cualquier** producto, tenga frontend o no: una API, un CLI, un
-script de datos, un backend sin una sola pantalla. No pregunta "¿esta pantalla está bien
-diseñada?"; pregunta "¿queda algo en este repo que delate que una IA lo escribió sin que nadie lo
-revisara, y falta algo que el cliente necesita para recibirlo?".
+`delivery-craft` no juzga si la interfaz está bien diseñada — de eso no opina. `proctor` (fase 3)
+sí usa Playwright, pero no para juzgar diseño: lo usa para PROBAR que lo que ya se diseñó y se
+limpió funciona de verdad contra el sistema real, delegando el criterio visual en `design-review-
+loop` en vez de reinventarlo. Es la capa de higiene y prueba final que corre DESPUÉS, sobre
+**cualquier** producto, tenga frontend o no: una API, un CLI, un script de datos, un backend sin
+una sola pantalla. No pregunta "¿esta pantalla está bien diseñada?"; pregunta "¿queda algo en este
+repo que delate que una IA lo escribió sin que nadie lo revisara, funciona de verdad corriendo, y
+falta algo que el cliente necesita para recibirlo?".
 
 En la práctica: si el producto tiene UI y está mal construida, corré primero `app-rescue` o
 `landing-rescue` — arreglan la causa de raíz de la interfaz. `delivery-craft` corre **siempre** al
@@ -44,28 +47,40 @@ final, haya habido un rescate de UI o no: es el paso previo a entregar, y cubre 
 ningún rescate de UI cubre — logs de debug en el backend, dependencias sin usar en todo el
 monorepo, el README, el `.env.example`, el arranque desde un clone limpio.
 
+**El gate visual de `proctor` (fase 3) no reinventa el de `magistrate`/`arbiter`.** Reusa el mismo
+rubro —contraste WCAG medido en ambos temas, layout a 320/768/1440, elementos mal puestos,
+responsive roto— delegando directamente en el skill `design-review-loop`, la misma herramienta que
+usan esos dos gates. La diferencia no es el criterio, es el momento y el objetivo: `magistrate`/
+`arbiter` corren DURANTE la construcción de la UI, contra el build en desarrollo, con datos mockeados
+por escenario; `proctor` corre AL FINAL de `delivery-craft`, contra el **sistema real levantado**
+(no mocks) — la misma base de datos y las mismas dependencias con las que el cliente lo va a correr.
+Si el producto no tiene UI, `proctor` salta el gate visual explícitamente y prueba contratos/
+comandos reales en su lugar.
+
 ---
 
-## Los tres oficios
+## Los cuatro oficios
 
 | # | Fase | Oficio | Qué hace | Produce | Puerta de salida |
 |---|------|--------|----------|---------|------------------|
 | 1 | Diagnóstico | `appraiser` | Inventaría cada rastro de IA y cada hueco de entrega con evidencia (ruta:línea o salida de herramienta), puntúa delivery-readiness. Solo lectura — no cambia una línea. | `docs/entrega/diagnostico.md` | Cada hallazgo tiene evidencia concreta; el puntaje y el veredicto están explícitos |
 | 2 | Limpieza | `finisher` | Limpia de raíz en olas verificadas — red de seguridad primero, un commit por ola, verificando entre olas que nada se rompió. Nunca borra sin prueba de que no se usa. | rama con los commits de cada ola + rastro en `docs/entrega/` | Cada ola verificada (build/lint/test) antes de la siguiente; nada roto sin revertir |
-| 3 | Puerta | `purser` | Verifica que está listo para el cliente: arranca desde un clone/checkout limpio, README ↔ realidad, `.env.example` completo, build/lint/test verdes. Firma o rechaza con la lista de lo que falta. | `docs/entrega/checklist-entrega.md` | Firma solo si el clone limpio corrió de verdad — o explica por qué no pudo, y qué queda sin probar |
+| 3 | Prueba integral | `proctor` | Levanta el producto REAL (no mocks) y lo prueba de verdad: suite completa (unit/integración/e2e), cada journey recorrido con Playwright cazando errores de consola/requests fallidos/botones muertos, el gate visual delegado en `design-review-loop` (si hay UI), barrido de copy. Sin UI, prueba contratos/comandos reales. Solo lectura sobre el código — reporta, no arregla. | `docs/entrega/pruebas.md` | Cada hallazgo tiene severidad y evidencia; el veredicto GO/NO-GO es el resultado de lo que corrió, no una suposición |
+| 4 | Puerta | `purser` | Verifica que está listo para el cliente: arranca desde un clone/checkout limpio, README ↔ realidad, `.env.example` completo, build/lint/test verdes. Firma o rechaza con la lista de lo que falta. | `docs/entrega/checklist-entrega.md` | Firma solo si el clone limpio corrió de verdad — o explica por qué no pudo, y qué queda sin probar |
 
 ## Cómo se ejecuta
 
 **1 · Delegá cada fase a su oficio, en orden estricto.** Finisher no arranca sin el diagnóstico de
-Appraiser; Purser no firma sin que Finisher haya cerrado (o documentado como deuda explícita) cada
-ola.
+Appraiser; Proctor no prueba sin que Finisher haya cerrado (o documentado como deuda explícita) cada
+ola; Purser no firma sin el veredicto de Proctor — un bloqueante que Proctor reporta es un NO-GO que
+vuelve a Finisher (o al builder que corresponda) antes de que Purser pueda firmar.
 
 **2 · Pasá los artefactos por disco.** `docs/entrega/diagnostico.md` → rama con commits +
-`docs/entrega/` → `docs/entrega/checklist-entrega.md`. Cada oficio lee lo que el anterior escribió,
-nunca un resumen de memoria.
+`docs/entrega/` → `docs/entrega/pruebas.md` → `docs/entrega/checklist-entrega.md`. Cada oficio lee
+lo que el anterior escribió, nunca un resumen de memoria.
 
 **3 · Verificá la puerta de salida de cada fase antes de avanzar.** Un "listo" sin evidencia pegada
-no cuenta en ninguna de las tres.
+no cuenta en ninguna de las cuatro.
 
 **4 · Para solo diagnóstico, sin tocar nada**, corré únicamente Appraiser — es lo que hace
 `/entrega-diagnostico`: el inventario sin la limpieza.
@@ -93,8 +108,17 @@ se registra como deuda explícita con motivo — nunca desaparece en silencio.
 demuestra falso, se corrige ahí mismo, no se anota para "después".
 
 **Appraiser es READ-ONLY de verdad**: reporta, no cambia — ni una línea, ni un formateo "de paso".
-**Purser tampoco cambia código**: verifica y firma; si algo falla en el clone limpio, es un
-rechazo, no algo que arregla sobre la marcha.
+**Proctor también es READ-ONLY**: prueba y reporta con severidad, nunca arregla — un bloqueante que
+encuentra vuelve a Finisher o al builder correspondiente, no lo parcha él mismo para que su propio
+reporte cierre. **Purser tampoco cambia código**: verifica y firma; si algo falla en el clone
+limpio, es un rechazo, no algo que arregla sobre la marcha.
+
+**Proctor prueba el sistema REAL, nunca mocks.** Levanta el producto con la receta que ya tiene el
+proyecto (`docker-compose` de `templates/docker/` o el comando documentado) y corre la suite y los
+journeys contra esa instancia corriendo — no contra una lectura de código ni contra datos
+simulados. Para la parte visual, delega en `design-review-loop` y en el rubro que ya definen
+`magistrate` (app-craft) y `arbiter` (landing-craft); no inventa su propio criterio de contraste o
+layout en paralelo.
 
 **"Profesional" tiene una sola prueba**: si se lo entregás a un dev senior ajeno al proyecto,
 ¿lo recibe y no nota que hubo IA? Esa es la vara — no "parece prolijo", sino "no deja rastro".
@@ -127,7 +151,9 @@ opera con el smoke test mínimo — no simula cobertura que no hay.
 |---|---|
 | `agents/appraiser.md` | Diagnóstico read-only: inventario de rastros de IA y huecos de entrega, con evidencia y puntaje |
 | `agents/finisher.md` | Limpieza en olas verificadas, un commit por ola, nunca borra sin prueba |
+| `agents/proctor.md` | Prueba integral: sistema real levantado, suite completa, journeys con Playwright, gate visual delegado en `design-review-loop`, barrido de copy — veredicto GO/NO-GO |
 | `agents/purser.md` | Puerta de entrega: verifica y firma, con la prueba del clone limpio |
+| `design-review-loop/SKILL.md` | El loop Playwright screenshot → crítica → refinar que Proctor reusa para el gate visual (no lo reescribe) |
 | `references/rastros-de-ia.md` | Catálogo detallado de cada tell, con el comando exacto para detectarlo por lenguaje |
 | `craft-core/references/safety-net.md` | La red de seguridad que Finisher construye antes de tocar nada (reusada, no reescrita) |
 | `craft-core/references/codebase-hygiene.md` | Las herramientas de código muerto y "nada quemado" que Appraiser/Finisher invocan |

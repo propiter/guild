@@ -1,7 +1,7 @@
 # guild
 
 El gremio: una suite de oficios que construyen software de producción, de la idea al producto
-desplegado y endurecido. 11 skills · 45 oficios · 31 comandos, un solo comando instala todo.
+desplegado y endurecido. 11 skills · 46 oficios · 31 comandos, un solo comando instala todo.
 
 No es una herramienta que hace una cosa. Es un **gremio de artesanos** — cada agente es un oficio
 con su nombre propio (architect, mason, cartographer, warden), sujeto al mismo estándar común, que
@@ -76,7 +76,7 @@ Texto completo en [`skills/craft-core/references/leyes-del-gremio.md`](skills/cr
 
 ## Los oficios
 
-Los 45 oficios, con su pipeline y su función, están en **[`docs/OFICIOS.md`](docs/OFICIOS.md)**.
+Los 46 oficios, con su pipeline y su función, están en **[`docs/OFICIOS.md`](docs/OFICIOS.md)**.
 Ese registro es lo que hace el sistema fácil de depurar aunque los nombres sean evocativos: si ves
 `choreographer` en un log, ahí dice qué hace.
 
