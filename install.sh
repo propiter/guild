@@ -6,7 +6,7 @@
 #   remoto:  curl -fsSL https://raw.githubusercontent.com/propiter/guild/main/install.sh | bash
 #
 # Instala TODO por defecto. Elegí con flags:
-#   --only=landing,system     instala solo esos pipelines (de: landing app system security)
+#   --only=landing,system     instala solo esos pipelines (de: landing app system security delivery)
 #   --no-impeccable           no traer Impeccable (motor estético de landing/app)
 #   --no-firecrawl            no configurar Firecrawl (research de landing)
 #   --no-gentle-ai            NO correr el instalador de Gentle AI (por defecto SÍ se corre)
@@ -57,7 +57,7 @@ guild installer — el gremio entero, en un comando.
   curl -fsSL https://raw.githubusercontent.com/propiter/guild/main/install.sh | bash
 
 Instala TODO por defecto. Opcional:
-  --only=landing,system     solo esos pipelines (de: landing app system security)
+  --only=landing,system     solo esos pipelines (de: landing app system security delivery)
   --no-impeccable           sin Impeccable (motor estético de landing/app)
   --no-firecrawl            sin el aviso de Firecrawl
   --no-gentle-ai            sin Gentle AI (por defecto SÍ se instala)
@@ -73,7 +73,7 @@ exit 0; fi
 # craft-core y los skills auxiliares van SIEMPRE (son la columna compartida).
 skill_pipeline() { case "$1" in
   landing-craft) echo landing;; app-craft) echo app;; system-craft) echo system;;
-  security-craft) echo security;; *) echo core;; esac; }
+  security-craft) echo security;; delivery-craft) echo delivery;; *) echo core;; esac; }
 
 # Un agente/ comando pertenece a un pipeline si su nombre está en la lista del pipeline.
 # (Los oficios no llevan prefijo, así que mantenemos un índice explícito.)
@@ -81,11 +81,13 @@ LANDING_ROLES="surveyor cartographer strategist draughtsman wordsmith stylist wr
 APP_ROLES="prospector ethnographer wayfinder artificer framer envoy joiner steward conductor lapidary magistrate examiner renovator"
 SYSTEM_ROLES="scout architect quartermaster archivist codifier foreman herald navigator mason inspector smith"
 SECURITY_ROLES="sentinel breaker warden locksmith"
+DELIVERY_ROLES="appraiser finisher purser"
 
 role_pipeline() { for r in $LANDING_ROLES; do [ "$1" = "$r" ] && { echo landing; return; }; done
   for r in $APP_ROLES; do [ "$1" = "$r" ] && { echo app; return; }; done
   for r in $SYSTEM_ROLES; do [ "$1" = "$r" ] && { echo system; return; }; done
   for r in $SECURITY_ROLES; do [ "$1" = "$r" ] && { echo security; return; }; done
+  for r in $DELIVERY_ROLES; do [ "$1" = "$r" ] && { echo delivery; return; }; done
   echo core; }
 
 wanted() { # $1 = pipeline de la pieza. core siempre entra.
@@ -170,7 +172,7 @@ if [ -d "$OPENCODE_DIR" ] || command -v opencode >/dev/null 2>&1; then install_i
 if [ -d "$CURSOR_DIR" ]   || command -v cursor   >/dev/null 2>&1; then install_into "$CURSOR_DIR" agents commands 1; INST="$INST Cursor"; fi
 say "Instalado en: $INST"
 say ""
-say "Pipelines:  /landing · /app · /proyecto · /seguridad   (oficios en docs/OFICIOS.md)"
+say "Pipelines:  /landing · /app · /proyecto · /seguridad · /entrega   (oficios en docs/OFICIOS.md)"
 
 # ── Firecrawl (opcional — solo un aviso si no está) ───────────────────────────
 if [ "$WITH_FIRECRAWL" = 1 ]; then

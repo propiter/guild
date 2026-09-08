@@ -1,7 +1,7 @@
 # guild
 
 El gremio: una suite de oficios que construyen software de producción, de la idea al producto
-desplegado y endurecido. 11 skills · 42 oficios · 31 comandos, un solo comando instala todo.
+desplegado y endurecido. 11 skills · 45 oficios · 31 comandos, un solo comando instala todo.
 
 No es una herramienta que hace una cosa. Es un **gremio de artesanos** — cada agente es un oficio
 con su nombre propio (architect, mason, cartographer, warden), sujeto al mismo estándar común, que
@@ -17,6 +17,7 @@ colabora sobre la misma obra.
 | 🖥️ **app** | `/app` | La interfaz de una aplicación, contra un contrato tipado |
 | 🏗️ **system** | `/proyecto` | El sistema completo: arquitectura, stack, datos, estándares, CI, guardrails |
 | 🔒 **security** | `/seguridad` | Ataca tu propia obra para endurecerla, y deja candados permanentes |
+| 📦 **delivery** | `/entrega` | Deja el producto limpio y profesional para entregar al cliente |
 
 Los cuatro comparten una columna, `craft-core`, y **las leyes del gremio**.
 
@@ -30,7 +31,7 @@ Un comando. Nada que clonar, nada que configurar:
 curl -fsSL https://raw.githubusercontent.com/propiter/guild/main/install.sh | bash
 ```
 
-Instala **todo** —los cuatro pipelines, Impeccable y Gentle AI— en Claude Code, y también en
+Instala **todo** —los cinco pipelines, Impeccable y Gentle AI— en Claude Code, y también en
 OpenCode y Cursor si los tenés. Idempotente, sin sudo, nada en segundo plano. Listo para usar.
 
 <details>
@@ -75,7 +76,7 @@ Texto completo en [`skills/craft-core/references/leyes-del-gremio.md`](skills/cr
 
 ## Los oficios
 
-Los 42 oficios, con su pipeline y su función, están en **[`docs/OFICIOS.md`](docs/OFICIOS.md)**.
+Los 45 oficios, con su pipeline y su función, están en **[`docs/OFICIOS.md`](docs/OFICIOS.md)**.
 Ese registro es lo que hace el sistema fácil de depurar aunque los nombres sean evocativos: si ves
 `choreographer` en un log, ahí dice qué hace.
 

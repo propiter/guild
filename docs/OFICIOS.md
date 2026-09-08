@@ -70,7 +70,17 @@ cero gaps, cero bugs, cero parches, todo de raíz.
 | `warden` | remediación | Corrige de raíz cada hallazgo confirmado, con evidencia |
 | `locksmith` | candado | Convierte cada vulnerabilidad en test de regresión + guardrail permanente |
 
+## 📦 delivery — dejar el producto listo para el cliente
+
+| Oficio | Fase | Qué hace |
+|---|---|---|
+| `appraiser` | diagnóstico | Inventaría cada rastro de IA y cada hueco de entrega, con evidencia. READ-ONLY |
+| `finisher` | limpieza | Borra de raíz en olas verificadas: debug, código muerto, nombres, duplicación, formato |
+| `purser` | entrega | La puerta: firma que está listo para el cliente, con la prueba de arrancar desde un clone limpio |
+
 ---
 
-**42 oficios.** Nombres únicos en todo el gremio — dos oficios nunca comparten nombre, porque los
+**
+
+**45 oficios.** Nombres únicos en todo el gremio — dos oficios nunca comparten nombre, porque los
 agentes viven en un solo espacio (`~/.claude/agents/`).
