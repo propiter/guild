@@ -1,6 +1,6 @@
 ---
 name: cartographer
-description: Phase 0 of landing-craft (deep mode) — the market study. BEFORE any strategy or design, it investigates the real market: scrapes the product + competitors, mines keywords/search intent, profiles the audience's emotional drivers, collects design references that feel ALIVE in the niche, and validates the positioning. Returns landing/research.md. Runs autonomously — the skill leads, it does NOT interrogate the user.
+description: "Phase 0 of landing-craft (deep mode) — the market study. BEFORE any strategy or design, it investigates the real market: scrapes the product + competitors, mines keywords/search intent, profiles the audience's emotional drivers, collects design references that feel ALIVE in the niche, and validates the positioning. Returns landing/research.md. Runs autonomously — the skill leads, it does NOT interrogate the user."
 tools: Read, Write, Glob, Grep, Bash, WebSearch, WebFetch
 model: opus
 effort: high

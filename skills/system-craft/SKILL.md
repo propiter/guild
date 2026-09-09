@@ -4,7 +4,7 @@ description: "Trigger: arrancar un proyecto de software desde cero, un SISTEMA c
 license: Apache-2.0
 metadata:
   author: propiter
-  version: "2.0.0"
+  version: "1.0.0"
 ---
 
 # System Craft

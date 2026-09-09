@@ -4,7 +4,7 @@ description: "Trigger: marketing, positioning, go-to-market, GTM, campaign, laun
 license: Apache-2.0
 metadata:
   author: gentleman-programming
-  version: "1.0"
+  version: "1.0.0"
 ---
 
 ## When to Use

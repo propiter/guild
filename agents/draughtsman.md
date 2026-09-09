@@ -1,6 +1,6 @@
 ---
 name: draughtsman
-description: Phase 2 of landing-craft (deep mode) — turns the research + strategy into the SITE plan: which pages the product needs (landing + pricing/about/blog/contact/FAQ/legal as the theme requires) and the UNIQUE, theme-specific section plan for the landing (never a fixed template). Reads landing/research.md + landing/strategy.md; writes landing/architecture.md.
+description: "Phase 2 of landing-craft (deep mode) — turns the research + strategy into the SITE plan: which pages the product needs (landing + pricing/about/blog/contact/FAQ/legal as the theme requires) and the UNIQUE, theme-specific section plan for the landing (never a fixed template). Reads landing/research.md + landing/strategy.md; writes landing/architecture.md."
 tools: Read, Write, Glob, Grep
 model: opus
 ---

@@ -1,5 +1,5 @@
 ---
-description: Rescue a badly-built marketing site — audit it, then remediate in verified waves: delete dead code, kill hardcoded values, share one Header/Footer, fix dead CTAs and stub forms, repair copy, craft and the ALIVE bar, SEO + GEO, Core Web Vitals.
+description: "Rescue a badly-built marketing site — audit it, then remediate in verified waves: delete dead code, kill hardcoded values, share one Header/Footer, fix dead CTAs and stub forms, repair copy, craft and the ALIVE bar, SEO + GEO, Core Web Vitals."
 argument-hint: "[alcance opcional, ej: 'la home' — vacío = todo el sitio]"
 ---
 

@@ -1,120 +1,65 @@
 #!/usr/bin/env bash
-# release.sh — bump version across all four version-bearing locations.
-# Usage: scripts/release.sh <new-version>   (e.g. 1.11.0)
-# Does NOT commit or push — review the diff, then commit manually.
+# release.sh — bumpea la versión del gremio en TODOS los lugares que la declaran.
+# Uso: scripts/release.sh <version-nueva>   (ej. 1.1.0)
+#
+# Reescrito por completo: la versión anterior bumpeaba `.claude-plugin/plugin.json` y
+# `.claude-plugin/marketplace.json` — archivos que NO EXISTEN en este repo. Quedó
+# desconectada de la realidad, exactamente lo que la ley "la doc no miente ni
+# envejece" prohíbe. La fuente de verdad hoy es VERSION en la raíz;
+# scripts/check-version.sh compara los 12 skills/*/SKILL.md contra ese archivo.
+#
+# No commitea ni pushea — revisá el diff y commiteá a mano.
 set -euo pipefail
-
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-
-# ── validate argument ─────────────────────────────────────────────────────────
+cd "$REPO_ROOT"
 
 NEW_VERSION="${1:-}"
 if [ -z "$NEW_VERSION" ]; then
-  echo "Usage: $0 <new-version>  (e.g.  1.11.0)" >&2
+  echo "Uso: $0 <version-nueva>   (ej. 1.1.0)" >&2
   exit 1
 fi
-
 if ! echo "$NEW_VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-  echo "ERROR: version must be semver X.Y.Z (got: '$NEW_VERSION')" >&2
+  echo "ERROR: la versión debe ser semver X.Y.Z (recibí: '$NEW_VERSION')" >&2
   exit 1
 fi
 
-# ── discover current version from plugin.json ─────────────────────────────────
-
-OLD_VERSION=$(node -e "
-  const fs = require('fs');
-  const j = JSON.parse(fs.readFileSync('${REPO_ROOT}/.claude-plugin/plugin.json', 'utf8'));
-  process.stdout.write(j.version);
-")
-
+OLD_VERSION="$(tr -d '[:space:]' < VERSION)"
 if [ "$OLD_VERSION" = "$NEW_VERSION" ]; then
-  echo "Already at $NEW_VERSION — nothing to bump." >&2
+  echo "Ya está en $NEW_VERSION — nada que bumpear."
   exit 0
 fi
 
-echo "Bumping $OLD_VERSION → $NEW_VERSION"
+echo "Bumpeando $OLD_VERSION → $NEW_VERSION"
+echo ""
 
-# ── bump helpers ──────────────────────────────────────────────────────────────
+printf '%s\n' "$NEW_VERSION" > VERSION
+echo "  VERSION"
 
-# Bump a JSON file field via node (safe, no sed fragility on JSON values).
-bump_json_field() {
-  local file="$1" field_path="$2" value="$3"
-  node -e "
-    const fs = require('fs');
-    const p = '${file}';
-    const j = JSON.parse(fs.readFileSync(p, 'utf8'));
-    const parts = '${field_path}'.split('.');
-    let obj = j;
-    for (let i = 0; i < parts.length - 1; i++) {
-      const k = parts[i];
-      const m = k.match(/^(.+)\[(\d+)\]$/);
-      obj = m ? obj[m[1]][parseInt(m[2])] : obj[k];
-    }
-    obj[parts[parts.length - 1]] = '${value}';
-    fs.writeFileSync(p, JSON.stringify(j, null, 2) + '\n');
-  "
-}
+for skill_file in skills/*/SKILL.md; do
+  python3 - "$skill_file" "$OLD_VERSION" "$NEW_VERSION" <<'PYEOF'
+import re
+import sys
 
-# ── 1. .claude-plugin/plugin.json ────────────────────────────────────────────
+path, old, new = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(path, encoding="utf-8") as f:
+    content = f.read()
 
-bump_json_field \
-  "${REPO_ROOT}/.claude-plugin/plugin.json" \
-  "version" \
-  "$NEW_VERSION"
-echo "  bumped .claude-plugin/plugin.json"
+pattern = re.compile(r'(^\s*version:\s*)"' + re.escape(old) + r'"', re.MULTILINE)
+new_content, n = pattern.subn(lambda m: m.group(1) + '"' + new + '"', content)
 
-# ── 2. .claude-plugin/marketplace.json  (two occurrences) ────────────────────
-
-bump_json_field \
-  "${REPO_ROOT}/.claude-plugin/marketplace.json" \
-  "metadata.version" \
-  "$NEW_VERSION"
-
-bump_json_field \
-  "${REPO_ROOT}/.claude-plugin/marketplace.json" \
-  "plugins[0].version" \
-  "$NEW_VERSION"
-echo "  bumped .claude-plugin/marketplace.json (metadata + plugins[0])"
-
-# ── 3. README.md badge ────────────────────────────────────────────────────────
-
-# Pattern: version-X.Y.Z-black  (inside a badge URL)
-sed -i "s/version-${OLD_VERSION}-black/version-${NEW_VERSION}-black/g" \
-  "${REPO_ROOT}/README.md"
-echo "  bumped README.md badge"
-
-# ── 4. version-bearing SKILL.md frontmatter ──────────────────────────────────
-
-# The pipelines and their shared spine version together — they ship as one plugin.
-# Pattern:  version: "X.Y.Z"  — may be top-level or indented (metadata: block).
-# The sed matches any leading whitespace so it handles both forms.
-for skill in craft-core landing-craft app-craft; do
-  sed -i "s/\(^[[:space:]]*version:[[:space:]]*\)\"${OLD_VERSION}\"/\1\"${NEW_VERSION}\"/" \
-    "${REPO_ROOT}/skills/${skill}/SKILL.md"
-  echo "  bumped skills/${skill}/SKILL.md"
+if n == 0:
+    print(f"  AVISO: no encontré 'version: \"{old}\"' en {path} — revisalo a mano.")
+else:
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(new_content)
+    print(f"  {path}")
+PYEOF
 done
 
-# ── validation pass ───────────────────────────────────────────────────────────
+echo ""
+echo "Validando…"
+bash scripts/check-version.sh
+bash -n install.sh && echo "  install.sh sintaxis OK"
 
 echo ""
-echo "Running post-bump checks…"
-
-bash "${REPO_ROOT}/scripts/check-version.sh"
-
-echo ""
-echo "Validating JSON…"
-node -e "
-  const fs = require('fs');
-  JSON.parse(fs.readFileSync('${REPO_ROOT}/.claude-plugin/plugin.json', 'utf8'));
-  console.log('  .claude-plugin/plugin.json      OK');
-  JSON.parse(fs.readFileSync('${REPO_ROOT}/.claude-plugin/marketplace.json', 'utf8'));
-  console.log('  .claude-plugin/marketplace.json  OK');
-"
-
-echo ""
-echo "Validating install.sh syntax…"
-bash -n "${REPO_ROOT}/install.sh"
-echo "  install.sh  OK"
-
-echo ""
-echo "✅  bumped to ${NEW_VERSION} — review the diff, then commit & push"
+echo "✅ bumpeado a ${NEW_VERSION} — revisá el diff y commiteá"

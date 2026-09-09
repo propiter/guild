@@ -1,6 +1,6 @@
 ---
 name: framer
-description: Phase 5 of app-craft — designs the app shell (top bar, sidebar, page header, context panel, command palette, responsive collapse) and writes a layout spec for every screen in the inventory: its archetype, regions, hierarchy, primary action, URL state, permissions, and its complete state matrix. Reads app/ia.md + app/system.md + app/contract.md; writes app/screens.md.
+description: "Phase 5 of app-craft — designs the app shell (top bar, sidebar, page header, context panel, command palette, responsive collapse) and writes a layout spec for every screen in the inventory: its archetype, regions, hierarchy, primary action, URL state, permissions, and its complete state matrix. Reads app/ia.md + app/system.md + app/contract.md; writes app/screens.md."
 tools: Read, Write, Glob, Grep
 model: sonnet
 ---

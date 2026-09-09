@@ -4,7 +4,7 @@ description: "Trigger: web animation, motion design, micro-interactions, transit
 license: Apache-2.0
 metadata:
   author: propiter
-  version: "2.1.0"
+  version: "1.0.0"
 ---
 
 # Motion Craft

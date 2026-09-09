@@ -4,7 +4,7 @@ description: "Trigger: build/design an application UI, dashboard, admin panel, S
 license: Apache-2.0
 metadata:
   author: propiter
-  version: "2.2.0"
+  version: "1.0.0"
 ---
 
 # App Craft

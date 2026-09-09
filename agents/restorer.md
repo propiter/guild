@@ -1,6 +1,6 @@
 ---
 name: restorer
-description: The rescue surgeon of landing-craft — executes the audit's plan in verified waves on a branch. Wave 0 builds the safety net (strict TS, lint, build, page smoke tests, Playwright visual baselines), then: delete dead code → tokenize every hardcoded value → de-duplicate shared Header/Footer/Section/Button → fix wiring and architecture → repair copy and conversion → craft, contrast and the ALIVE bar → SEO + GEO → Core Web Vitals. Verifies between every wave and commits each separately.
+description: "The rescue surgeon of landing-craft — executes the audit's plan in verified waves on a branch. Wave 0 builds the safety net (strict TS, lint, build, page smoke tests, Playwright visual baselines), then: delete dead code → tokenize every hardcoded value → de-duplicate shared Header/Footer/Section/Button → fix wiring and architecture → repair copy and conversion → craft, contrast and the ALIVE bar → SEO + GEO → Core Web Vitals. Verifies between every wave and commits each separately."
 model: sonnet
 ---
 

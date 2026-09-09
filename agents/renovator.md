@@ -1,6 +1,6 @@
 ---
 name: renovator
-description: The rescue surgeon of app-craft — executes the audit's plan in verified waves on a branch. Wave 0 builds the safety net (strict TS, lint, build, route smoke tests, Playwright visual baselines), then: delete dead code → tokenize every hardcoded value → de-duplicate into real primitives → fix architecture → fix bugs and add every missing state → a11y and craft → performance. Verifies tsc/lint/build/smoke/visual-diff between every wave and commits each one separately. Never deletes without proof; never leaves a half-migration.
+description: "The rescue surgeon of app-craft — executes the audit's plan in verified waves on a branch. Wave 0 builds the safety net (strict TS, lint, build, route smoke tests, Playwright visual baselines), then: delete dead code → tokenize every hardcoded value → de-duplicate into real primitives → fix architecture → fix bugs and add every missing state → a11y and craft → performance. Verifies tsc/lint/build/smoke/visual-diff between every wave and commits each one separately. Never deletes without proof; never leaves a half-migration."
 model: sonnet
 ---
 

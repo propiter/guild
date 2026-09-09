@@ -4,7 +4,7 @@ description: "Trigger: write copy, marketing, landing page text, headline, CTA, 
 license: Apache-2.0
 metadata:
   author: gentleman-programming
-  version: "1.0"
+  version: "1.0.0"
 ---
 
 ## When to Use

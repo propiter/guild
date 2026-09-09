@@ -4,7 +4,7 @@ description: "Shared foundation for the craft pipelines — NOT invoked directly
 license: Apache-2.0
 metadata:
   author: propiter
-  version: "2.2.0"
+  version: "1.0.0"
 ---
 
 # Craft Core

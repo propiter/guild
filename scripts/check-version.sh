@@ -1,89 +1,79 @@
 #!/usr/bin/env bash
-# check-version.sh — assert all version strings across the repo are identical.
-# Exits 0 if consistent, exits 1 with a clear diff message if not.
+# check-version.sh — todo `version:` en skills/*/SKILL.md coincide con VERSION.
+#
+# QUÉ PREVIENE
+# ────────────
+# El gremio versiona como una unidad: VERSION en la raíz es la fuente de verdad.
+# Bumpear la versión y olvidar uno de los 12 SKILL.md deja un skill publicado con un
+# número de versión mentiroso — exactamente lo que la ley "la doc no miente ni
+# envejece" prohíbe. release.sh bumpea todos los archivos a la vez, pero nada
+# impedía (antes de esta guardia) un commit manual que tocara sólo alguno.
+#
+# La versión anterior de este script comparaba contra `.claude-plugin/plugin.json`
+# y `.claude-plugin/marketplace.json` — ARCHIVOS QUE NO EXISTEN EN ESTE REPO. Estaba
+# desconectado del todo; nunca corrió en verde ni en rojo, simplemente reventaba con
+# "no such file". Este reemplazo usa la fuente de verdad real: VERSION.
+#
+# QUÉ MIDE
+# ────────
+# Parsea con YAML el frontmatter de cada skills/*/SKILL.md, extrae `version` (de
+# nivel superior o anidado en `metadata.version` — ambas formas conviven hoy en el
+# repo) y lo compara contra el contenido (trimmed) de VERSION.
 set -euo pipefail
-
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$REPO_ROOT"
 
-# ── extract versions ──────────────────────────────────────────────────────────
+python3 - <<'PYEOF'
+import glob
+import re
+import sys
+import yaml
 
-# plugin.json  →  "version": "X.Y.Z"
-V_PLUGIN=$(node -e "
-  const fs = require('fs');
-  const p = '${REPO_ROOT}/.claude-plugin/plugin.json';
-  const j = JSON.parse(fs.readFileSync(p, 'utf8'));
-  process.stdout.write(j.version);
-")
+with open("VERSION", encoding="utf-8") as f:
+    canonical = f.read().strip()
 
-# marketplace.json  →  metadata.version  (first occurrence in the plugins[0] block)
-V_MARKET_META=$(node -e "
-  const fs = require('fs');
-  const p = '${REPO_ROOT}/.claude-plugin/marketplace.json';
-  const j = JSON.parse(fs.readFileSync(p, 'utf8'));
-  process.stdout.write(j.metadata.version);
-")
+if not re.match(r"^\d+\.\d+\.\d+$", canonical):
+    print(f"✗ check-version: VERSION contiene '{canonical}', que no es semver X.Y.Z")
+    print("  qué hacer: corregí el archivo VERSION en la raíz a un semver válido.")
+    sys.exit(1)
 
-V_MARKET_PLUGIN=$(node -e "
-  const fs = require('fs');
-  const p = '${REPO_ROOT}/.claude-plugin/marketplace.json';
-  const j = JSON.parse(fs.readFileSync(p, 'utf8'));
-  process.stdout.write(j.plugins[0].version);
-")
 
-# README.md  →  badge  version-X.Y.Z-black
-V_README=$(grep -oE 'version-[0-9]+\.[0-9]+\.[0-9]+-black' \
-  "${REPO_ROOT}/README.md" | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+def frontmatter(path):
+    with open(path, encoding="utf-8") as f:
+        content = f.read()
+    lines = content.split("\n")
+    body, closed = [], False
+    for line in lines[1:]:
+        if line.strip() == "---":
+            closed = True
+            break
+        body.append(line)
+    return "\n".join(body) if closed else None
 
-# Version-bearing SKILL.md files → frontmatter  version: "X.Y.Z"
-# The version may be top-level or nested under a metadata: block — match either.
-# The two pipelines and their shared spine ship as one plugin, so they version together.
-skill_version() {
-  grep -oE 'version:[[:space:]]+"[0-9]+\.[0-9]+\.[0-9]+"' \
-    "${REPO_ROOT}/skills/$1/SKILL.md" | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'
-}
 
-V_SKILL=$(skill_version landing-craft)
-V_SKILL_CORE=$(skill_version craft-core)
-V_SKILL_APP=$(skill_version app-craft)
+problems = []
+files = sorted(glob.glob("skills/*/SKILL.md"))
+for path in files:
+    block = frontmatter(path)
+    data = yaml.safe_load(block) if block else None
+    version = None
+    if isinstance(data, dict):
+        version = data.get("version") or (data.get("metadata") or {}).get("version")
+    if not version:
+        problems.append((path, "no tiene campo `version` (ni de nivel superior ni en metadata.version)"))
+    elif str(version) != canonical:
+        problems.append((path, f"tiene version '{version}', VERSION dice '{canonical}'"))
 
-# ── report ────────────────────────────────────────────────────────────────────
+if problems:
+    print("")
+    print(f"✗ check-version: desincronizado contra VERSION ({canonical})")
+    print("")
+    for path, problem in problems:
+        print(f"  {path}: {problem}")
+    print("")
+    print(f"  qué hacer: actualizá el/los campo(s) \"version\" a \"{canonical}\", o corré")
+    print(f"  scripts/release.sh {canonical} para sincronizar todo el gremio de una vez.")
+    sys.exit(1)
 
-printf '%-50s  %s\n' ".claude-plugin/plugin.json"                "$V_PLUGIN"
-printf '%-50s  %s\n' ".claude-plugin/marketplace.json (metadata)" "$V_MARKET_META"
-printf '%-50s  %s\n' ".claude-plugin/marketplace.json (plugins[0])" "$V_MARKET_PLUGIN"
-printf '%-50s  %s\n' "README.md (badge)"                          "$V_README"
-printf '%-50s  %s\n' "skills/craft-core/SKILL.md (frontmatter)"    "$V_SKILL_CORE"
-printf '%-50s  %s\n' "skills/landing-craft/SKILL.md (frontmatter)" "$V_SKILL"
-printf '%-50s  %s\n' "skills/app-craft/SKILL.md (frontmatter)"     "$V_SKILL_APP"
-
-# ── assert ────────────────────────────────────────────────────────────────────
-
-VERSIONS=("$V_PLUGIN" "$V_MARKET_META" "$V_MARKET_PLUGIN" "$V_README" "$V_SKILL_CORE" "$V_SKILL" "$V_SKILL_APP")
-LABELS=(
-  ".claude-plugin/plugin.json"
-  ".claude-plugin/marketplace.json:metadata.version"
-  ".claude-plugin/marketplace.json:plugins[0].version"
-  "README.md badge"
-  "skills/craft-core/SKILL.md frontmatter"
-  "skills/landing-craft/SKILL.md frontmatter"
-  "skills/app-craft/SKILL.md frontmatter"
-)
-
-CANONICAL="${VERSIONS[0]}"
-FAIL=0
-for i in "${!VERSIONS[@]}"; do
-  if [ "${VERSIONS[$i]}" != "$CANONICAL" ]; then
-    echo "" >&2
-    echo "VERSION MISMATCH: ${LABELS[$i]} is '${VERSIONS[$i]}', expected '$CANONICAL'" >&2
-    FAIL=1
-  fi
-done
-
-if [ "$FAIL" -eq 1 ]; then
-  echo "" >&2
-  echo "ERROR: Version strings are out of sync. Run scripts/release.sh <version> to align them." >&2
-  exit 1
-fi
-
-echo ""
-echo "OK: all version strings are consistent at $CANONICAL"
+print(f"✓ check-version: VERSION={canonical}, {len(files)} skills sincronizados")
+PYEOF

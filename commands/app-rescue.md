@@ -1,5 +1,5 @@
 ---
-description: Rescue a badly-built app (AI-generated or grown without discipline) — audit it, then remediate in verified waves: delete dead code, kill hardcoded values, de-duplicate, fix architecture, fix bugs, add every missing state, a11y and performance. Zero technical debt, changed at the root.
+description: "Rescue a badly-built app (AI-generated or grown without discipline) — audit it, then remediate in verified waves: delete dead code, kill hardcoded values, de-duplicate, fix architecture, fix bugs, add every missing state, a11y and performance. Zero technical debt, changed at the root."
 argument-hint: "[alcance opcional, ej: 'el módulo de facturación' — vacío = toda la app]"
 ---
 

@@ -1,7 +1,8 @@
 # guild
 
 El gremio: una suite de oficios que construyen software de producción, de la idea al producto
-desplegado y endurecido. 11 skills · 46 oficios · 31 comandos, un solo comando instala todo.
+desplegado y endurecido. 12 skills · 46 oficios · 33 comandos, un solo comando instala todo.
+Versión 1.0.0 — ver [`CHANGELOG.md`](CHANGELOG.md).
 
 No es una herramienta que hace una cosa. Es un **gremio de artesanos** — cada agente es un oficio
 con su nombre propio (architect, mason, cartographer, warden), sujeto al mismo estándar común, que
@@ -9,7 +10,7 @@ colabora sobre la misma obra.
 
 ---
 
-## Los cuatro pipelines
+## Los cinco pipelines
 
 | Pipeline | Comando | Qué construye |
 |---|---|---|
@@ -19,7 +20,10 @@ colabora sobre la misma obra.
 | 🔒 **security** | `/seguridad` | Ataca tu propia obra para endurecerla, y deja candados permanentes |
 | 📦 **delivery** | `/entrega` | Deja el producto limpio y profesional para entregar al cliente |
 
-Los cuatro comparten una columna, `craft-core`, y **las leyes del gremio**.
+Los cinco comparten una columna, `craft-core`, y **las leyes del gremio**.
+
+**¿Cuándo uso cuál?** → la coreografía completa —cómo se encadenan estos cinco pipelines en un
+proyecto real, con casos de uso concretos— está en [`docs/PIPELINES.md`](docs/PIPELINES.md).
 
 ---
 
@@ -46,7 +50,7 @@ curl -fsSL https://raw.githubusercontent.com/propiter/guild/main/install.sh | ba
 
 | Opción | Efecto |
 |---|---|
-| `--only=landing,system` | Solo esos pipelines (de `landing app system security`) |
+| `--only=landing,system` | Solo esos pipelines (de `landing app system security delivery`) |
 | `--no-impeccable` | Sin Impeccable (motor estético de landing/app) |
 | `--no-gentle-ai` | Sin Gentle AI (memoria + SDD) |
 | `--no-firecrawl` | Sin el aviso de Firecrawl |
@@ -66,9 +70,13 @@ resultado "funcione".
 1. **Cero gaps** — nada a medias sin registrar.
 2. **Cero bugs** — se corrigen al encontrarlos, con datos verificados, no hipótesis.
 3. **Cero parches** — todo se arregla de RAÍZ; el código y la doc quedan consistentes.
-4. **Código limpio, escalable, ordenado** — la pieza cuarenta se construye como la primera.
+4. **Limpio, escalable, ordenado** — la pieza cuarenta se construye como la primera.
 5. **Fácil de depurar** — errores que dicen qué hacer; fallá cerrado, nunca silencioso.
-6. **Verde no es correcto** — un test que nunca falló no probó nada.
+6. **Seguro por defecto** — toda entrada se valida en la frontera; ante la duda, el sistema niega.
+7. **Probado, no prometido** — RED→GREEN; "terminado" es verificado contra su contrato.
+8. **Verde no es correcto** — un test que nunca falló no probó nada.
+9. **Investigá; no adivines** — fuentes confiables y el código real, nunca la memoria.
+10. **La doc no miente ni envejece** — si algo cambió, se corrige en el momento, nunca "después".
 
 Texto completo en [`skills/craft-core/references/leyes-del-gremio.md`](skills/craft-core/references/leyes-del-gremio.md).
 
@@ -82,8 +90,18 @@ Ese registro es lo que hace el sistema fácil de depurar aunque los nombres sean
 
 ---
 
+## Contribuir
+
+¿Querés agregar un oficio o un pipeline nuevo? La guía —frontmatter, nombres únicos, el bloque de
+leyes, y la regla de correr `verify` en verde antes de cualquier PR— está en
+[`CONTRIBUTING.md`](CONTRIBUTING.md).
+
+---
+
 ## De dónde salió
 
 Empezó como un solo pipeline de landings. Después llegó el de aplicaciones, después el del sistema
 completo, y después el que ataca la propia obra. En algún punto dejó de ser "una herramienta de
 landings" y pasó a ser lo que es: un gremio.
+
+Historial de versiones en [`CHANGELOG.md`](CHANGELOG.md).

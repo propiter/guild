@@ -1,5 +1,5 @@
 ---
-description: The flagship — one prompt to a deployed, market-current, multi-page site. The skill LEADS: it researches, builds, and deploys autonomously, init → product. Hands you a live URL.
+description: "The flagship — one prompt to a deployed, market-current, multi-page site. The skill LEADS: it researches, builds, and deploys autonomously, init → product. Hands you a live URL."
 argument-hint: "<lo que querés, ej: 'una landing para mi SaaS'>"
 ---
 
